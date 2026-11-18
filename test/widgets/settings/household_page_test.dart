@@ -408,4 +408,27 @@ void main() {
       await leave(tester);
     });
   });
+
+  group("removing a TV not seen for a month", () {
+    final now = DateTime(2026, 11, 17, 12);
+    Map<String, dynamic> member({int? daysAgo, bool online = false}) => {
+          "tvId": "tv-2",
+          "online": online,
+          "lastSeen": daysAgo == null ? 0 : now.subtract(Duration(days: daysAgo)).millisecondsSinceEpoch,
+        };
+
+    test("an adult profile needs no Parent PIN for a TV off 30 days or more", () {
+      expect(removableWithoutParentPin(member(daysAgo: 30), kids: false, now: now), isTrue);
+      expect(removableWithoutParentPin(member(daysAgo: 400), kids: false, now: now), isTrue);
+    });
+
+    test("the Parent PIN is still asked otherwise", () {
+      // Seen within the month, on now, never seen, or in a kids profile
+      expect(removableWithoutParentPin(member(daysAgo: 29), kids: false, now: now), isFalse);
+      expect(removableWithoutParentPin(member(daysAgo: 60, online: true), kids: false, now: now), isFalse);
+      expect(removableWithoutParentPin(member(), kids: false, now: now), isFalse);
+      expect(removableWithoutParentPin(member(daysAgo: 60), kids: true, now: now), isFalse);
+      expect(removableWithoutParentPin({...member(daysAgo: 60), "self": true}, kids: false, now: now), isFalse);
+    });
+  });
 }

@@ -78,6 +78,8 @@ const String _parentPinHashKey = "device_parent_pin_hash";
 // Which Parent PIN this TV follows (ParentPinHash.isTag). With no hash: set on another TV of the household and not yet
 // typed here (the Java side asks the other TVs, and keeps what it learns: HaParentPins.java reads both keys).
 const String _parentPinVersionKey = "device_parent_pin_version";
+// The hash of the PIN this TV had before it followed one it has no hash of (SettingsService.parentPinPrevious)
+const String _parentPinPreviousKey = "device_parent_pin_previous_hash";
 const String _householdParentPinOfferedKey = "device_household_parent_pin_offered";
 // Whether the adults' parent PINs from Home Assistant are kept (the Java side keeps them, sealed: HaParentPins.java), and
 // whether Home Assistant manages them now. The old key held their hashes here in the clear (2026.11.04): removed.
@@ -473,15 +475,31 @@ class SettingsService extends ChangeNotifier {
   Future<void> setParentPinHash(String hash) async {
     await _sharedPreferences.setString(_parentPinHashKey, hash);
     await _sharedPreferences.setString(_parentPinVersionKey, ParentPinHash.tagOf(hash)!);
+    await _sharedPreferences.remove(_parentPinPreviousKey);
     notifyListeners();
   }
 
   /// This TV follows the household's Parent PIN of [version], set on another TV: it holds no hash of it until the
-  /// PIN is typed here and another TV confirms it. A hash of an earlier PIN goes.
+  /// PIN is typed here and another TV confirms it. A hash of an earlier PIN no longer works; it is put aside
+  /// ([parentPinPrevious]) in case the TV that set [version] goes before anyone confirmed it here.
   Future<void> setParentPinPending(String version) async {
+    final earlier = parentPinHash;
+    if (earlier != null) await _sharedPreferences.setString(_parentPinPreviousKey, earlier);
     await _sharedPreferences.remove(_parentPinHashKey);
     await _sharedPreferences.setString(_parentPinVersionKey, version);
     notifyListeners();
+  }
+
+  /// The hash of the Parent PIN typed or set here before the one this TV now follows without a hash of it
+  /// ([setParentPinPending]); null when there is none, or once the new one is known here. It works again only when
+  /// the household's is dropped because nobody is left who can say what it is (HouseholdParentPin).
+  String? get parentPinPrevious {
+    final stored = _sharedPreferences.getString(_parentPinPreviousKey);
+    return stored != null && ParentPinHash.pattern.hasMatch(stored) && !ParentPinHash.isTag(stored) ? stored : null;
+  }
+
+  Future<void> clearParentPinPrevious() async {
+    if (_sharedPreferences.containsKey(_parentPinPreviousKey)) await _sharedPreferences.remove(_parentPinPreviousKey);
   }
 
   /// Whether [pin] is this TV's own Parent PIN by the hash kept here (false with none kept). [checkParentPin] is the
@@ -521,6 +539,7 @@ class SettingsService extends ChangeNotifier {
     await _sharedPreferences.setString(
         _parentPinVersionKey, ParentPinHash.isTag(offered) ? offered : ParentPinHash.tagOf(hash)!);
     await _sharedPreferences.remove(_householdParentPinOfferedKey);
+    await _sharedPreferences.remove(_parentPinPreviousKey);
     notifyListeners();
   }
 
@@ -530,6 +549,7 @@ class SettingsService extends ChangeNotifier {
     await _sharedPreferences.remove(_haParentPinsOldKey);
     await _sharedPreferences.remove(_haParentPinsKeptKey);
     await _sharedPreferences.remove(_haParentPinsManagedKey);
+    await _sharedPreferences.remove(_parentPinPreviousKey);
     if (pin == null) {
       await _sharedPreferences.remove(_parentPinHashKey);
       await _sharedPreferences.remove(_parentPinVersionKey);

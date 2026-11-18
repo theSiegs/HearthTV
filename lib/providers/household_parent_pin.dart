@@ -38,6 +38,10 @@ class HouseholdParentPin {
   /// device_: the TV's own, never in a backup. The version this TV last took from or gave to the household.
   static const String knownKey = "device_household_parent_pin_known";
 
+  /// device_: the household's version this TV dropped because the TV that set it was removed before it was confirmed
+  /// here: not followed again (a newer one is).
+  static const String droppedKey = "device_household_parent_pin_dropped";
+
   /// What [SettingsService.householdParentPinOffered] holds for a household PIN an old build left unsalted.
   static const String legacyOffer = "legacy";
 
@@ -80,17 +84,20 @@ class HouseholdParentPin {
       final state = await _channel.getHouseholdParentPin();
       // Can't be read just now: nothing changes (what this TV last took or gave is how a change here is told)
       if (state == null) return;
+      // The PIN this TV now follows is known here (typed and confirmed): the one put aside before it isn't needed
+      if (fromHa != null && fromHa["ownKnown"] == true) await _settings.clearParentPinPrevious();
       if (state["state"] == "out") {
         await _prefs.remove(knownKey);
+        await _prefs.remove(droppedKey);
         await _settings.setHouseholdParentPinOffered(null);
         // In no household any more, following a PIN that was only ever typed on other TVs: nobody is left to say
-        // what it is, so it goes rather than lock this TV for good. (One typed here before is kept by the Java side
+        // what it is, so it goes rather than lock this TV for good. (One typed here for it is kept by the Java side
         // and still works.)
         if (fromHa != null &&
             fromHa["ownKnown"] == false &&
             _settings.parentPinHash == null &&
             _settings.parentPinVersion != null) {
-          await _settings.setParentPin(null);
+          await _fallBack(fromHa, null);
         }
         return;
       }
@@ -105,7 +112,7 @@ class HouseholdParentPin {
       var household = hash != null
           ? ParentPinHash.tagOf(hash)
           : (entryVersion is String && ParentPinHash.isTag(entryVersion) ? entryVersion : null);
-      final known = _prefs.getString(knownKey);
+      var known = _prefs.getString(knownKey);
       // An old build's unsalted entry is the PIN for whoever holds it: it's worked out, and replaced
       final legacy = live ? state["legacy"] : null;
       final legacyPin = legacy is String ? ParentPinHash.pinOfLegacy(legacy) : null;
@@ -120,7 +127,33 @@ class HouseholdParentPin {
         // This TV holds that PIN, salted: its version goes out in the old entry's place
         household = null;
       }
-      final local = _settings.parentPinVersion;
+      var local = _settings.parentPinVersion;
+      var dropped = _prefs.getString(droppedKey);
+      // The TV that set the household's PIN was removed (or left) before this TV confirmed it: nobody may be left who
+      // can say what it is, so this TV doesn't follow it and falls back as a TV removed from the household does. A
+      // hash an older build left in the entry can still be checked here, so that one is followed.
+      if (live && state["writerGone"] == true && fromHa != null && hash == null && household != null &&
+          household != dropped) {
+        final confirmed = household == local && (_settings.parentPinHash != null || fromHa["ownKnown"] == true);
+        if (!confirmed) {
+          if (household == local) {
+            await _fallBack(fromHa, household);
+            local = _settings.parentPinVersion;
+            // Not a change made here: what it fell back to doesn't go out
+            known = local ?? "";
+            await _setKnown(local);
+          }
+          await _prefs.setString(droppedKey, household);
+          dropped = household;
+        }
+      }
+      if (dropped != null && household != dropped) {
+        // The household moved on (a TV still in it set another): followed as usual
+        await _prefs.remove(droppedKey);
+      } else if (dropped != null) {
+        // Still the dropped one: as if the household had this TV's, so only a change made here goes out
+        household = local;
+      }
       final step = decide(
           household: household, householdRemoved: state["state"] == "removed", local: local, known: known);
       switch (step) {
@@ -147,6 +180,27 @@ class HouseholdParentPin {
     } catch (err) {
       noteFailure('household_parent_pin', err);
     }
+  }
+
+  /// The PIN this TV follows can't be checked by anyone left (never typed here, and the TV that set it is gone): this
+  /// TV falls back to a PIN typed here before (the one it had before it followed this one, else the household's
+  /// earlier one it learned from another TV, which the Java side keeps), else it has none of its own. [avoid]: the
+  /// version being dropped.
+  Future<void> _fallBack(Map<dynamic, dynamic> fromHa, String? avoid) async {
+    final previous = _settings.parentPinPrevious;
+    if (previous != null && ParentPinHash.tagOf(previous) != avoid) {
+      await _settings.setParentPinHash(previous);
+      return;
+    }
+    final learned = fromHa["learnedVersion"];
+    if (learned is String &&
+        ParentPinHash.isTag(learned) &&
+        learned != avoid &&
+        learned != _settings.parentPinVersion) {
+      await _settings.setParentPinPending(learned);
+      return;
+    }
+    await _settings.setParentPin(null);
   }
 
   /// What this TV last took or gave was remembered as the hash by older builds: now its version. (An unsalted one

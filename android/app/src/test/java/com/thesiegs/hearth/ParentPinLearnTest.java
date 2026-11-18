@@ -36,6 +36,8 @@ public class ParentPinLearnTest {
         boolean haReachable;
         boolean haLocked;
         HaParentPins.PeerAnswer peers = HaParentPins.PeerAnswer.UNKNOWN;
+        /** Whose PIN {@link #haPin} is, as verify_pin names them on a yes (null: not said). */
+        Map<String, String> haPeople = new HashMap<>();
         int haAsked;
         final List<String> peersAsked = new ArrayList<>();
 
@@ -56,6 +58,12 @@ public class ParentPinLearnTest {
         public HaParentPins.PeerAnswer peers(Context context, String scope, String pin) {
             peersAsked.add(scope);
             return peers;
+        }
+
+        @Override
+        public HaParentPins.HaAnswer haAnswer(Context context, String pin) {
+            HaParentPins.Verdict verdict = ha(context, pin);
+            return new HaParentPins.HaAnswer(verdict, verdict == HaParentPins.Verdict.YES ? haPeople.get(pin) : null);
         }
     }
 
@@ -272,6 +280,51 @@ public class ParentPinLearnTest {
     }
 
     @Test
+    public void row9_theTvThatSetTheHouseholdsPinWasRemoved_theEntrySaysSo() {
+        String version = ParentPinHash.tagOf(ParentPinHash.make(PIN));
+        HouseholdLog log = new HouseholdLog("tv-2");
+        HouseholdEntry set = entry(version);
+        assertNull(Household.parentPinOf(set, log).get("writerGone"));
+        // Another TV's removal says nothing of this entry
+        log.delete(HouseholdMembers.KIND, HouseholdBridge.SHARED, "tv-3", NOW);
+        assertNull(Household.parentPinOf(set, log).get("writerGone"));
+        // The TV that wrote it (tv-1) is removed: its member entry goes for good
+        log.delete(HouseholdMembers.KIND, HouseholdBridge.SHARED, "tv-1", NOW);
+        Map<String, Object> household = Household.parentPinOf(set, log);
+        assertEquals("live", household.get("state"));
+        assertEquals(version, household.get("version"));
+        assertEquals(true, household.get("writerGone"));
+        // Only a live PIN: a removal stays a removal
+        HouseholdEntry removed = new HouseholdEntry(HouseholdBridge.PARENT_PIN, HouseholdBridge.SHARED, "", "", NOW,
+                "tv-1", 2, true);
+        assertNull(Household.parentPinOf(removed, log).get("writerGone"));
+        assertNull(Household.parentPinOf(null, log).get("writerGone"));
+    }
+
+    @Test
+    public void row9_theHouseholdsEarlierPinLearnedHereIsWhatTheTvFallsBackTo() {
+        // Learned here for the household's first PIN; then another TV set a second that nobody confirmed here
+        String first = ParentPinHash.tagOf(ParentPinHash.make(PIN));
+        String second = ParentPinHash.tagOf(ParentPinHash.make(OTHER));
+        own(tv, null, first);
+        assertNull(HaParentPins.tvLearnedVersion(tv));
+        ask.peers = said(HaParentPins.PeerAnswer.Kind.YES);
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(first, HaParentPins.tvLearnedVersion(tv));
+        own(tv, null, second);
+        assertFalse(HaParentPins.ownKnown(tv));
+        ask.peers = HaParentPins.PeerAnswer.UNKNOWN;
+        assertEquals(HaParentPins.Check.NO_TVS, check(PIN));
+        // The app drops the second (its writer is gone) and follows the first again: checked here, with no other TV
+        assertEquals(first, HaParentPins.tvLearnedVersion(tv));
+        own(tv, null, first);
+        int asked = ask.peersAsked.size();
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(HaParentPins.Check.NO, check(OTHER));
+        assertEquals(asked, ask.peersAsked.size());
+    }
+
+    @Test
     public void row5_removedFromTheHousehold_aPinTypedHereStays_withNoOtherTvToAsk() {
         // Set here: its hash is the TV's own
         String hash = ParentPinHash.make(PIN);
@@ -424,6 +477,84 @@ public class ParentPinLearnTest {
         ask.haReachable = false;
         assertEquals(HaParentPins.Check.NO_HA, check(PIN));
         assertEquals("ha:" + V2, ask.peersAsked.get(ask.peersAsked.size() - 1));
+    }
+
+    /** A state document naming each adult's version ({@code parent_pins_versions}), by person: their keys only. */
+    private static void documentByAdult(FakeContext context, String version, String... personAndVersion)
+            throws Exception {
+        JSONObject versions = new JSONObject();
+        for (int i = 0; i < personAndVersion.length; i += 2) {
+            versions.put(HaParentPins.adultKey(personAndVersion[i]), personAndVersion[i + 1]);
+        }
+        HaParentPins.applyDocument(context,
+                new JSONObject().put("parent_pins_version", version).put("parent_pins_versions", versions));
+    }
+
+    @Test
+    public void row8_anAdultsKeyIsTheIntegrationsAndNamesNobody() {
+        // parent_pin.adult_key("person.alex") in the integration (test_parent_pin)
+        assertEquals("e465dd3804a00eab", HaParentPins.adultKey("person.alex"));
+        assertNull(HaParentPins.adultKey(null));
+        assertNull(HaParentPins.adultKey(""));
+    }
+
+    @Test
+    public void row8_oneAdultChangingTheirPinDropsOnlyTheirs_theOthersWorkWithHomeAssistantDown() throws Exception {
+        ask.paired = true;
+        ask.haReachable = true;
+        documentByAdult(tv, V1, "person.alex", "a1", "person.sam", "s1");
+        ask.haPeople.put(PIN, "person.alex");
+        ask.haPeople.put(OTHER, "person.sam");
+        ask.haPin = PIN;
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        ask.haPin = OTHER;
+        assertEquals(HaParentPins.Check.YES, check(OTHER));
+        assertEquals(2, HaParentPins.hashes(tv).size());
+        // Alex changes theirs in Home Assistant, which then goes down
+        documentByAdult(tv, V2, "person.alex", "a2", "person.sam", "s1");
+        assertEquals(V2, HaParentPins.version(tv));
+        assertEquals(1, HaParentPins.hashes(tv).size());
+        ask.haReachable = false;
+        assertEquals(HaParentPins.Check.YES, check(OTHER));
+        assertEquals(HaParentPins.Check.NO_HA, check(PIN));
+        // Sam's PIN removed there: theirs goes too
+        documentByAdult(tv, "cccccccccccccccc", "person.alex", "a2");
+        assertTrue(HaParentPins.hashes(tv).isEmpty());
+    }
+
+    @Test
+    public void row8_aPinLearnedWithoutWhose_orADocumentWithoutEachAdultsVersion_dropsAllAsBefore() throws Exception {
+        ask.paired = true;
+        ask.haReachable = true;
+        documentByAdult(tv, V1, "person.alex", "a1", "person.sam", "s1");
+        // Home Assistant's yes didn't say whose: dropped on any change
+        ask.haPin = PIN;
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        documentByAdult(tv, V2, "person.alex", "a1", "person.sam", "s2");
+        assertTrue(HaParentPins.hashes(tv).isEmpty());
+        // Said whose, then the same PIN learned again replaces nothing twice
+        ask.haPeople.put(PIN, "person.alex");
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(1, HaParentPins.hashes(tv).size());
+        // An older integration (no parent_pins_versions): a new version drops them all
+        document(tv, "cccccccccccccccc");
+        assertTrue(HaParentPins.hashes(tv).isEmpty());
+    }
+
+    @Test
+    public void row8_aPinLearnedBeforeItWasSaidWhoseIsTaggedOnItsNextYes() throws Exception {
+        ask.paired = true;
+        ask.haReachable = true;
+        documentByAdult(tv, V1, "person.alex", "a1", "person.sam", "s1");
+        ask.haPin = PIN;
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        ask.haPeople.put(PIN, "person.alex");
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(1, HaParentPins.hashes(tv).size());
+        // Sam's change now leaves Alex's
+        documentByAdult(tv, V2, "person.alex", "a1", "person.sam", "s2");
+        assertEquals(1, HaParentPins.hashes(tv).size());
     }
 
     @Test

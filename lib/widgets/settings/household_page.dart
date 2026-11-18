@@ -19,6 +19,7 @@ import 'dart:async';
 
 import 'package:flauncher/flauncher_channel.dart';
 import 'package:flauncher/l10n/app_localizations.dart';
+import 'package:flauncher/providers/profile_service.dart';
 import 'package:flauncher/providers/settings_service.dart';
 import 'package:flauncher/quiet_failure.dart';
 import 'package:flauncher/share/household_join.dart';
@@ -30,6 +31,21 @@ import 'package:provider/provider.dart';
 
 import 'focusable_settings_tile.dart';
 import 'settings_page.dart';
+
+/// How long another TV of the household must have been off before an adult profile may remove it without the Parent
+/// PIN (docs/household-sync.md, "Removing").
+const Duration removeUnseenAfter = Duration(days: 30);
+
+/// Whether [member] (another TV of the household, from `members`) may be removed without the Parent PIN: in an adult
+/// profile (not a kids one), when it hasn't been on for [removeUnseenAfter]. A lost TV that was the only one to know
+/// the household's Parent PIN would otherwise leave nobody able to remove it, or to leave.
+bool removableWithoutParentPin(Map<dynamic, dynamic> member, {required bool kids, required DateTime now}) {
+  if (kids || member["self"] == true || member["online"] == true) return false;
+  final at = (member["lastSeen"] as num?)?.toInt() ?? 0;
+  // Never seen: when it was last on isn't known, so the PIN is asked as ever
+  if (at <= 0) return false;
+  return now.difference(DateTime.fromMillisecondsSinceEpoch(at)) >= removeUnseenAfter;
+}
 
 /// The other households [FLauncherChannel.getHouseholdStatus] heard on the network, each as its TVs' names.
 List<List<String?>> householdsNearby(Map<dynamic, dynamic> status) => [
@@ -528,7 +544,9 @@ class _HouseholdPageState extends State<HouseholdPage> {
         ],
       ),
     );
-    if (remove != true || !mounted || !await _allowed()) return;
+    if (remove != true || !mounted) return;
+    final kids = context.read<ProfileService?>()?.isKidsProfile ?? true;
+    if (!removableWithoutParentPin(member, kids: kids, now: DateTime.now()) && !await _allowed()) return;
     final removed = await _channel.removeHouseholdTv(tvId);
     if (!mounted) return;
     if (!removed) {

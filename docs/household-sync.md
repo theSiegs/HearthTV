@@ -228,8 +228,10 @@ Every TV on the list keeps the whole list, so each knows every other, even two t
   current names and when each TV was last on.
 
 **Removing, from the person's side.** Choosing another TV on the Household sync page offers **Remove from
-household**; this TV leaves with **Leave the household**. Both ask for the Parent PIN where this TV has one. Each TV
-shows when it was last on ("Last on 12 days ago"); nothing is ever removed on its own. (Marking a TV not seen for 60
+household**; this TV leaves with **Leave the household**. Both ask for the Parent PIN where this TV has one, except
+that an adult profile may remove a TV that hasn't been on for 30 days or more without it (a lost TV may have been the
+only one that knew the Parent PIN). Each TV shows when it was last on ("Last on 12 days ago"); nothing is ever
+removed on its own. (Marking a TV not seen for 60
 days isn't built.)
 
 **Leaving** (removing this TV) writes this TV's own removal and tries to hand it to the TVs that are on now (for up to
@@ -496,7 +498,13 @@ while Hearth TV runs, with the looks), remembering the version it last took or g
 - Changed or removed here since (which took the PIN here): it goes out. Changed or removed on another TV: this TV
   follows. A household with none takes the first TV's.
 - Leaving the household (or being removed) forgets what was taken or given. A PIN typed here stays; one set on
-  another TV and never typed here goes, so the TV isn't left with a PIN nobody can check.
+  another TV and never typed here goes, so the TV isn't left with a PIN nobody can check. It falls back to the PIN
+  typed here before (the one it had before it followed that one, else the household's earlier one it learned from
+  another TV), else it has none of its own.
+- The TV that set the household's PIN is removed (its member entry goes) before this TV confirmed that PIN: this TV
+  drops it the same way and falls back as above, and remembers the dropped version so it isn't taken again. Nothing
+  goes out: a TV that did confirm it keeps it. A newer PIN set on a TV still in the household is followed as usual.
+  (Getting the entry's writer: `writerGone` in the household's Parent PIN state, from the member list.)
 - The household's entry can't be read just now: nothing changes.
 
 **Learning it from another TV.** A TV that follows a version it holds no hash of asks the other TVs when the PIN is

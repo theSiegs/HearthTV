@@ -1464,7 +1464,8 @@ final class Household {
      * The household's Parent PIN: {state: "live", "removed" or "none"}; {state: "out"} when this TV is in no household
      * (never was, or was removed from it); null when it can't be read just now. A live one says its "version"
      * (ParentPinHash.isTag), which is all a TV writes now. One written by an older build is the hash itself: "hash"
-     * (salted, with the version every TV works out from it), or "legacy" (the old unsalted form, no version). Read
+     * (salted, with the version every TV works out from it), or "legacy" (the old unsalted form, no version); and
+     * "writerGone" when the TV that set it was removed since. Read
      * from the log as last saved, so an exchange on the household thread doesn't hold it up. Blocks: not on the main
      * thread.
      */
@@ -1475,11 +1476,26 @@ final class Household {
         Context app = context.getApplicationContext();
         try {
             if (store(app).removed()) return out;
-            return readSaved(app, log -> parentPinOf(log.entry(HouseholdBridge.PARENT_PIN, HouseholdBridge.SHARED, "")));
+            return readSaved(app, log -> parentPinOf(log.entry(HouseholdBridge.PARENT_PIN, HouseholdBridge.SHARED, ""),
+                    log));
         } catch (Exception e) {
             Log.i(TAG, "Couldn't read the household's Parent PIN: " + why(e));
             return null;
         }
+    }
+
+    /**
+     * As {@link #parentPinOf(HouseholdEntry)}, and for a live one whether the TV that set it was removed from
+     * {@code log}'s household ("writerGone": true). A TV that never confirmed that version then drops it
+     * (HouseholdParentPin on the Dart side), as nobody may be left who can say what the PIN is.
+     */
+    static Map<String, Object> parentPinOf(HouseholdEntry entry, HouseholdLog log) {
+        Map<String, Object> out = parentPinOf(entry);
+        if (entry != null && log != null && "live".equals(out.get("state"))
+                && HouseholdMembers.standing(log, entry.tv) == HouseholdMembers.Standing.REMOVED) {
+            out.put("writerGone", true);
+        }
+        return out;
     }
 
     /** What the household's Parent PIN entry says ({@link #parentPin}). */

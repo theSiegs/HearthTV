@@ -23,10 +23,14 @@ class _FakeChannel extends FLauncherChannel {
   bool haManaged = false;
   // The TV's own PIN can be checked with no other TV (a hash of it is kept here)
   bool ownKnown = true;
+  // The household's version a PIN was learned for here from another TV
+  String? learnedVersion;
+  // The TV that set the household's PIN was removed
+  bool writerGone = false;
 
   @override
   Future<Map<dynamic, dynamic>?> getHaParentPins() async =>
-      {"kept": haKept, "managed": haManaged, "ownKnown": ownKnown};
+      {"kept": haKept, "managed": haManaged, "ownKnown": ownKnown, "learnedVersion": learnedVersion};
 
   @override
   Future<Map<dynamic, dynamic>?> getHouseholdParentPin() async {
@@ -37,6 +41,7 @@ class _FakeChannel extends FLauncherChannel {
       if (version != null) "version": version,
       if (hash != null) "hash": hash,
       if (legacy != null) "legacy": legacy,
+      if (writerGone && state == "live") "writerGone": true,
     };
   }
 
@@ -44,6 +49,7 @@ class _FakeChannel extends FLauncherChannel {
   Future<bool> publishHouseholdParentPin(String? version) async {
     if (!member) return false;
     given.add(version);
+    writerGone = false;
     state = version == null ? "removed" : "live";
     this.version = version;
     hash = null;
@@ -263,6 +269,95 @@ void main() {
         ..ownKnown = false;
       await sync.tick();
       expect(settings.hasParentPin, isFalse);
+    });
+
+    test("the TV that set the household's PIN was removed before it was typed here: the PIN typed here before",
+        () async {
+      // This TV's own went to the household; then another TV changed it, and this TV follows the new one unconfirmed
+      await settings.setParentPin("2468");
+      await sync.tick();
+      final mine = settings.parentPinVersion;
+      channel.version = vb;
+      await sync.tick();
+      expect(settings.parentPinVersion, vb);
+      expect(settings.verifyParentPin("2468"), isFalse);
+      // That TV is lost and removed before anyone typed the new PIN here
+      channel
+        ..ownKnown = false
+        ..writerGone = true;
+      await sync.tick();
+      expect(settings.parentPinVersion, mine);
+      expect(settings.verifyParentPin("2468"), isTrue);
+      // Nothing goes out: the household's other TVs keep what they confirmed
+      expect(channel.given, hasLength(1));
+      await sync.tick();
+      expect(settings.parentPinVersion, mine);
+      expect(channel.given, hasLength(1));
+      // A PIN set here later goes out as usual
+      await settings.setParentPin("1111");
+      await sync.tick();
+      expect(channel.given, hasLength(2));
+      expect(channel.given.last, settings.parentPinVersion);
+    });
+
+    test("the TV that set the household's PIN was removed: else the household's earlier one learned here, else none",
+        () async {
+      channel
+        ..state = "live"
+        ..version = va;
+      await sync.tick();
+      expect(settings.parentPinVersion, va);
+      // The Java side learned the first one from another TV; the household moved to a second nobody confirmed here
+      channel
+        ..learnedVersion = va
+        ..ownKnown = false
+        ..version = vb;
+      await sync.tick();
+      expect(settings.parentPinVersion, vb);
+      channel.writerGone = true;
+      await sync.tick();
+      expect(settings.parentPinVersion, va);
+      expect(settings.parentPinHash, isNull);
+      expect(channel.given, isEmpty);
+
+      // Nothing typed here at all: the TV has none of its own, rather than one nobody can check
+      SharedPreferences.setMockInitialValues({});
+      final fresh = await SharedPreferences.getInstance();
+      final freshSettings = SettingsService(fresh);
+      final freshChannel = _FakeChannel()
+        ..state = "live"
+        ..version = vb
+        ..ownKnown = false;
+      final freshSync = HouseholdParentPin(freshChannel, fresh, freshSettings);
+      await freshSync.tick();
+      expect(freshSettings.parentPinVersion, vb);
+      freshChannel.writerGone = true;
+      await freshSync.tick();
+      expect(freshSettings.hasParentPin, isFalse);
+      // A TV that wasn't following it yet doesn't take it either
+      await freshSync.tick();
+      expect(freshSettings.hasParentPin, isFalse);
+      // A newer PIN set on a TV still in the household is followed again
+      freshChannel
+        ..writerGone = false
+        ..version = va;
+      await freshSync.tick();
+      expect(freshSettings.parentPinVersion, va);
+    });
+
+    test("the TV that set the household's PIN was removed after it was typed here: kept", () async {
+      channel
+        ..state = "live"
+        ..version = va;
+      await sync.tick();
+      expect(settings.parentPinVersion, va);
+      // Typed here and confirmed by that TV (the Java side keeps it), which is then removed
+      channel
+        ..ownKnown = true
+        ..writerGone = true;
+      await sync.tick();
+      expect(settings.parentPinVersion, va);
+      expect(prefs.getString(HouseholdParentPin.droppedKey), isNull);
     });
 
     test("the household can't be read just now: nothing changes", () async {

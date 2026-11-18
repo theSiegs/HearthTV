@@ -540,10 +540,12 @@ public class MainActivity extends FlutterActivity {
             case "getHaParentPins" -> answerFrom(sIoExecutor, result, () -> {
                 java.util.Map<String, Object> pins = new java.util.HashMap<>();
                 // kept: Home Assistant's PINs are the Parent PIN here, in place of the TV's own (it sets them now, or
-                // ones learned from it are still kept); ownKnown: the TV's own can be checked with no other TV
+                // ones learned from it are still kept); ownKnown: the TV's own can be checked with no other TV;
+                // learnedVersion: the household's version a PIN was learned for here from another TV
                 pins.put("kept", HaParentPins.inPlace(this));
                 pins.put("managed", HaParentPins.managed(this));
                 pins.put("ownKnown", HaParentPins.ownKnown(this));
+                pins.put("learnedVersion", HaParentPins.tvLearnedVersion(this));
                 return pins;
             });
             // "yes", "no", or the PIN wasn't taken because nobody who could say was reached: "no_ha", "no_tvs"

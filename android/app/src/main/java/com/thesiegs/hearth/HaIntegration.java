@@ -397,22 +397,30 @@ final class HaIntegration {
      * say: unreachable, not paired any more, or it has none set. Quick to give up, as someone waits at the PIN pad.
      */
     static HaParentPins.Verdict verifyPin(Context context, String pin) {
+        return verifyPinAnswer(context, pin).verdict;
+    }
+
+    /** As {@link #verifyPin}, with whose PIN it is on a yes (the answer's {@code person}, a person entity id). */
+    static HaParentPins.HaAnswer verifyPinAnswer(Context context, String pin) {
         String base = HaConfig.baseUrl(context);
         String secret = secret(context);
-        if (base == null || secret == null || pin == null) return HaParentPins.Verdict.UNKNOWN;
+        HaParentPins.HaAnswer unknown = new HaParentPins.HaAnswer(HaParentPins.Verdict.UNKNOWN, null);
+        if (base == null || secret == null || pin == null) return unknown;
         Answer answer;
         try {
             answer = request(base + "/api/hearth/device/" + deviceId(context) + "/verify_pin", "POST",
                     new JSONObject().put("pin", pin), null, secret, 2_000, 3_000);
         } catch (JSONException e) {
-            return HaParentPins.Verdict.UNKNOWN;
+            return unknown;
         }
         if (answer.code == 200 && answer.body != null) {
-            return answer.body.optBoolean("ok", false) ? HaParentPins.Verdict.YES : HaParentPins.Verdict.NO;
+            if (!answer.body.optBoolean("ok", false)) return new HaParentPins.HaAnswer(HaParentPins.Verdict.NO, null);
+            String person = answer.body.optString("person", "");
+            return new HaParentPins.HaAnswer(HaParentPins.Verdict.YES, person.isEmpty() ? null : person);
         }
         // Locked out there: no, even for the right PIN, as on a phone (so nothing is learned from it either way)
-        if (answer.code == 429) return HaParentPins.Verdict.LOCKED;
-        return HaParentPins.Verdict.UNKNOWN;
+        if (answer.code == 429) return new HaParentPins.HaAnswer(HaParentPins.Verdict.LOCKED, null);
+        return unknown;
     }
 
     /**

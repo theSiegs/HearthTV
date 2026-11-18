@@ -19,7 +19,9 @@ import java.util.List;
  *
  * <p><b>Home Assistant sets the PINs</b> ({@link #managed}: the TV is paired and its last state document named
  * {@code parent_pins_version}). The integration is asked, and its answer and lockout are final. A yes is learned,
- * tagged with the version; a no drops a learned PIN that matches; a new version drops them all. With Home Assistant
+ * tagged with the version and with whose it is (the adult's key and version from {@code parent_pins_versions}); a no
+ * drops a learned PIN that matches; a new version drops only the PINs of the adults whose version changed (all of
+ * them when the document doesn't say each adult's, or for a PIN learned without saying whose). With Home Assistant
  * unreachable, a PIN learned here works, then the household's other TVs are asked whether they learned it, and
  * otherwise the PIN isn't taken ({@link Check#NO_HA}). The TV's own PIN doesn't work while Home Assistant sets them.
  *
@@ -33,6 +35,8 @@ import java.util.List;
 final class HaParentPins {
     private static final String KEY_SEALED = "ha_parent_pins_sealed";
     private static final String KEY_VERSION = "ha_parent_pins_version";
+    /** Each adult's version from the last document ({@code parent_pins_versions}: {adult key: version}), as JSON. */
+    private static final String KEY_VERSIONS = "ha_parent_pins_versions";
     private static final String KEY_MANAGED = "ha_parent_pins_managed";
     /** Hashes kept in the clear by 2026.11.04: sealed on first read, then removed. */
     private static final String KEY_PLAIN = "ha_parent_pins";
@@ -97,6 +101,22 @@ final class HaParentPins {
 
         /** The household's other TVs' answer for {@code scope} (blocking); UNKNOWN when none could say. */
         PeerAnswer peers(Context context, String scope, String pin);
+
+        /** The integration's answer with whose PIN it is (blocking); by default {@link #ha}, naming nobody. */
+        default HaAnswer haAnswer(Context context, String pin) {
+            return new HaAnswer(ha(context, pin), null);
+        }
+    }
+
+    /** What the integration said, and on a yes whose PIN it is ({@code person}, its person entity id; may be null). */
+    static final class HaAnswer {
+        final Verdict verdict;
+        final String person;
+
+        HaAnswer(Verdict verdict, String person) {
+            this.verdict = verdict;
+            this.person = person;
+        }
     }
 
     private static final Asker REAL = new Asker() {
@@ -108,6 +128,11 @@ final class HaParentPins {
         @Override
         public Verdict ha(Context context, String pin) {
             return HaIntegration.verifyPin(context, pin);
+        }
+
+        @Override
+        public HaAnswer haAnswer(Context context, String pin) {
+            return HaIntegration.verifyPinAnswer(context, pin);
         }
 
         @Override
@@ -130,24 +155,38 @@ final class HaParentPins {
     }
 
     /**
-     * Takes the document's word on the parent PINs: only {@code parent_pins_version} is read (the hashes an older
-     * integration still sends are not). A version other than the one the learned PINs were confirmed under drops them
-     * all; the same version keeps them, which is how PINs kept by a build that took hashes go on working. No version:
-     * Home Assistant has none, and the last ones stay, no longer managed.
+     * Takes the document's word on the parent PINs: {@code parent_pins_version} and, from an integration that sends
+     * it, {@code parent_pins_versions} (each adult's: {adult key: version}); the hashes an older integration still
+     * sends are not read. A version other than the one the learned PINs were confirmed under drops those of the
+     * adults whose own version changed (or went), so one adult changing their PIN leaves the others' working with
+     * Home Assistant down. A learned PIN that doesn't say whose, or a document without each adult's version, drops
+     * them all, as before. The same version keeps them, which is how PINs kept by a build that took hashes go on
+     * working. No version: Home Assistant has none, and the last ones stay, no longer managed.
      */
     static synchronized void applyDocument(Context context, JSONObject state) {
         if (state == null) return;
         String version = state.optString("parent_pins_version", "");
+        JSONObject versions = state.optJSONObject("parent_pins_versions");
         SharedPreferences prefs = prefs(context);
-        SharedPreferences.Editor editor = prefs.edit();
         if (version.isEmpty()) {
-            editor.putBoolean(KEY_MANAGED, false);
-        } else {
-            if (!version.equals(prefs.getString(KEY_VERSION, null))) {
-                editor.remove(KEY_SEALED).remove(KEY_PLAIN).putString(KEY_VERSION, version);
-            }
-            editor.putBoolean(KEY_MANAGED, true);
+            prefs.edit().putBoolean(KEY_MANAGED, false).apply();
+            return;
         }
+        // Read before the editor below is made: reading may reseal what an older build kept in the clear
+        List<Learned> learned = version.equals(prefs.getString(KEY_VERSION, null)) ? null : learnedEntries(context);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (learned != null) {
+            List<Learned> keep = new ArrayList<>();
+            if (versions != null) {
+                for (Learned l : learned) {
+                    if (l.adult != null && l.adultVersion.equals(versions.optString(l.adult, ""))) keep.add(l);
+                }
+            }
+            putLearned(editor.remove(KEY_PLAIN), keep);
+            editor.putString(KEY_VERSION, version);
+        }
+        if (versions != null) editor.putString(KEY_VERSIONS, versions.toString()); else editor.remove(KEY_VERSIONS);
+        editor.putBoolean(KEY_MANAGED, true);
         editor.apply();
     }
 
@@ -156,8 +195,90 @@ final class HaParentPins {
         return prefs(context).getString(KEY_VERSION, "");
     }
 
+    /**
+     * The key an adult goes by in {@code parent_pins_versions}, worked out from their person entity id as the
+     * integration does (household.py {@code adult_key}), so no name is sent: the first 16 hex digits of SHA-256 of
+     * "hearth-adult:" and the id. Null for none.
+     */
+    static String adultKey(String person) {
+        if (person == null || person.isEmpty()) return null;
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(("hearth-adult:" + person).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 8; i++) hex.append(String.format(java.util.Locale.ROOT, "%02x", digest[i] & 0xff));
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return null;
+        }
+    }
+
+    /** A PIN learned from Home Assistant: its hash, and whose it is at which of their versions (both null: unsaid). */
+    static final class Learned {
+        final String hash;
+        final String adult;
+        final String adultVersion;
+
+        Learned(String hash, String adult, String adultVersion) {
+            this.hash = hash;
+            boolean whose = adult != null && !adult.isEmpty() && adultVersion != null && !adultVersion.isEmpty();
+            this.adult = whose ? adult : null;
+            this.adultVersion = whose ? adultVersion : null;
+        }
+    }
+
+    /**
+     * The learned PINs, sealed as a JSON array, each a hash (learned without saying whose, or by an older build) or
+     * {"h": hash, "a": adult key, "av": that adult's version}.
+     */
+    private static List<Learned> learnedEntries(Context context) {
+        List<Learned> out = new ArrayList<>();
+        String json = learnedJson(context);
+        if (json == null) return out;
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                Object item = array.opt(i);
+                Learned l = item instanceof JSONObject
+                        ? new Learned(((JSONObject) item).optString("h", ""), ((JSONObject) item).optString("a", ""),
+                                ((JSONObject) item).optString("av", ""))
+                        : new Learned(array.optString(i, ""), null, null);
+                // Not a version, and not the old unsalted form (nothing from Home Assistant ever was)
+                if (ParentPinHash.SALTED.matcher(l.hash).matches() && !ParentPinHash.isTag(l.hash)) out.add(l);
+            }
+        } catch (Exception ignored) {
+            // None kept
+        }
+        return out;
+    }
+
+    /** Seals {@code learned} into {@code editor}; with none, or when sealing fails, none is kept. */
+    private static void putLearned(SharedPreferences.Editor editor, List<Learned> learned) {
+        String sealed = null;
+        if (!learned.isEmpty()) {
+            try {
+                JSONArray array = new JSONArray();
+                for (Learned l : learned) {
+                    array.put(l.adult == null ? l.hash
+                            : new JSONObject().put("h", l.hash).put("a", l.adult).put("av", l.adultVersion));
+                }
+                sealed = SecretBox.sealText(keys(), ALIAS, array.toString());
+            } catch (JSONException e) {
+                sealed = null;
+            }
+        }
+        if (sealed == null) editor.remove(KEY_SEALED); else editor.putString(KEY_SEALED, sealed);
+    }
+
     /** The PINs learned from Home Assistant, as hashes (they're for {@link #version}). */
     static synchronized List<String> hashes(Context context) {
+        List<String> out = new ArrayList<>();
+        for (Learned l : learnedEntries(context)) out.add(l.hash);
+        return out;
+    }
+
+    /** The learned PINs as sealed (opened); null for none. */
+    private static String learnedJson(Context context) {
         SharedPreferences prefs = prefs(context);
         String json = null;
         String sealed = prefs.getString(KEY_SEALED, null);
@@ -169,7 +290,7 @@ final class HaParentPins {
             String resealed = SecretBox.sealText(keys(), ALIAS, json);
             if (resealed != null) prefs.edit().putString(KEY_SEALED, resealed).remove(KEY_PLAIN).apply();
         }
-        return valid(json);
+        return json;
     }
 
     private static List<String> valid(String json) {
@@ -216,24 +337,54 @@ final class HaParentPins {
 
     /** A Parent PIN of the TV's own was set here: the ones learned from Home Assistant go. */
     static synchronized void forget(Context context) {
-        prefs(context).edit().remove(KEY_SEALED).remove(KEY_VERSION).remove(KEY_MANAGED).remove(KEY_PLAIN).apply();
+        prefs(context).edit().remove(KEY_SEALED).remove(KEY_VERSION).remove(KEY_VERSIONS).remove(KEY_MANAGED)
+                .remove(KEY_PLAIN).apply();
     }
 
     /**
      * Home Assistant confirmed {@code pin} while this TV followed {@code version}: kept as a fresh salted hash, unless
-     * the version changed meanwhile (the PIN may be one that was just replaced).
+     * the version changed meanwhile (the PIN may be one that was just replaced). Learned without saying whose.
      */
-    static synchronized void learn(Context context, String version, String pin) {
+    static void learn(Context context, String version, String pin) {
+        learn(context, version, pin, null);
+    }
+
+    /**
+     * As {@link #learn(Context, String, String)}, for {@code person}'s PIN (Home Assistant's answer named them): kept
+     * with their adult key and version, so another adult's PIN change leaves it ({@link #applyDocument}). One learned
+     * before without saying whose is replaced by it.
+     */
+    static synchronized void learn(Context context, String version, String pin, String person) {
         SharedPreferences prefs = prefs(context);
         if (version == null || version.isEmpty() || !version.equals(prefs.getString(KEY_VERSION, null))) return;
-        List<String> hashes = hashes(context);
-        if (matches(hashes, pin)) return;
+        String adult = adultKey(person);
+        String adultVersion = adult == null ? "" : adultVersions(prefs).optString(adult, "");
+        boolean whose = !adultVersion.isEmpty();
+        List<Learned> keep = new ArrayList<>();
+        boolean known = false;
+        for (Learned l : learnedEntries(context)) {
+            boolean same = ParentPinHash.verify(pin, l.hash);
+            if (same && l.adult == null && whose) continue;
+            known |= same;
+            keep.add(l);
+        }
+        if (known) return;
         String hash = ParentPinHash.make(pin);
         if (hash == null) return;
-        hashes.add(hash);
-        while (hashes.size() > MAX_LEARNED) hashes.remove(0);
-        String sealed = SecretBox.sealText(keys(), ALIAS, new JSONArray(hashes).toString());
-        if (sealed != null) prefs.edit().putString(KEY_SEALED, sealed).remove(KEY_PLAIN).apply();
+        keep.add(new Learned(hash, adult, adultVersion));
+        while (keep.size() > MAX_LEARNED) keep.remove(0);
+        SharedPreferences.Editor editor = prefs.edit().remove(KEY_PLAIN);
+        putLearned(editor, keep);
+        editor.apply();
+    }
+
+    /** Each adult's version as the last document said ({} for none). */
+    private static JSONObject adultVersions(SharedPreferences prefs) {
+        try {
+            return new JSONObject(prefs.getString(KEY_VERSIONS, "{}"));
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
     }
 
     /** Home Assistant accepted {@code pin} some other way (a notice's button): learned for the version followed now. */
@@ -243,15 +394,14 @@ final class HaParentPins {
 
     /** Home Assistant said {@code pin} is no Parent PIN: a learned one that matches goes. */
     static synchronized void dropMatching(Context context, String pin) {
-        List<String> hashes = hashes(context);
-        List<String> left = new ArrayList<>();
-        for (String hash : hashes) {
-            if (!ParentPinHash.verify(pin, hash)) left.add(hash);
+        List<Learned> learned = learnedEntries(context);
+        List<Learned> left = new ArrayList<>();
+        for (Learned l : learned) {
+            if (!ParentPinHash.verify(pin, l.hash)) left.add(l);
         }
-        if (left.size() == hashes.size()) return;
+        if (left.size() == learned.size()) return;
         SharedPreferences.Editor editor = prefs(context).edit().remove(KEY_PLAIN);
-        String sealed = left.isEmpty() ? null : SecretBox.sealText(keys(), ALIAS, new JSONArray(left).toString());
-        if (sealed == null) editor.remove(KEY_SEALED); else editor.putString(KEY_SEALED, sealed);
+        putLearned(editor, left);
         editor.apply();
     }
 
@@ -323,6 +473,18 @@ final class HaParentPins {
         }
     }
 
+    /** The version of the household's Parent PIN learned here from another TV (null: none). */
+    static synchronized String tvLearnedVersion(Context context) {
+        String sealed = prefs(context).getString(KEY_TV_SEALED, null);
+        if (sealed == null) return null;
+        try {
+            String version = new JSONObject(SecretBox.openText(keys(), TV_ALIAS, sealed)).optString("v", "");
+            return ParentPinHash.isTag(version) && !tvLearned(context, version).isEmpty() ? version : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Whether the TV's own Parent PIN can be checked here with no other TV: its hash, or one learned for its version. */
     static boolean ownKnown(Context context) {
         Own own = own(context);
@@ -348,9 +510,10 @@ final class HaParentPins {
         if (managed(context, asker)) {
             // The version before asking: an answer is learned only for the version it was given under
             String version = version(context);
-            Verdict verdict = asker.ha(context, pin);
+            HaAnswer said = asker.haAnswer(context, pin);
+            Verdict verdict = said == null ? Verdict.UNKNOWN : said.verdict;
             if (verdict == Verdict.YES) {
-                learn(context, version, pin);
+                learn(context, version, pin, said.person);
                 return Check.YES;
             }
             if (verdict == Verdict.NO) {
