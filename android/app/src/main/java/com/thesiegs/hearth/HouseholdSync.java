@@ -111,9 +111,48 @@ final class HouseholdSync {
         }
     }
 
+    /**
+     * A Parent PIN the TV that opens an exchange asks the other about (docs/household-sync.md, Parent PIN), and what
+     * came back. It rides in the sealed frame that says what this TV has seen, once each side has proved it is a
+     * member; a TV on a build that doesn't answer says nothing, which is "can't say".
+     */
+    static final class PinQuestion {
+        final String scope;
+        final String pin;
+        private final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        private volatile JSONObject answer;
+
+        PinQuestion(String scope, String pin) {
+            this.scope = scope;
+            this.pin = pin;
+        }
+
+        /** The other TV's answer (null: none), once; later ones change nothing. */
+        void answered(JSONObject said) {
+            if (done.getCount() == 0) return;
+            answer = said;
+            done.countDown();
+        }
+
+        /** Waits for the answer; null when none came in time, or the other TV gave none. */
+        JSONObject await(long ms) throws InterruptedException {
+            done.await(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+            return answer;
+        }
+    }
+
+    /** Answers a Parent PIN another TV of the household asks about (HaParentPins.answerPeer); null: can't say. */
+    interface PinDesk {
+        JSONObject answer(String peer, String scope, String pin);
+    }
+
     private final DataInputStream in;
     private final DataOutputStream out;
     private final boolean initiator;
+    /** What this TV asks the other about a Parent PIN (it opened the exchange); null: nothing. */
+    private PinQuestion question;
+    /** Who answers the other TV's question about a Parent PIN; null: nobody here can. */
+    private PinDesk desk;
     /** This TV's id and household, as they were when the exchange opened. */
     private final String selfId;
     private final String householdId;
@@ -182,10 +221,22 @@ final class HouseholdSync {
     static Result run(InputStream in, OutputStream out, boolean initiator, HouseholdStore store,
             HouseholdPictures pictures, String name, long now, Runnable proven)
             throws IOException, GeneralSecurityException {
+        return run(in, out, initiator, store, pictures, name, now, proven, null);
+    }
+
+    /**
+     * As {@link #run(InputStream, OutputStream, boolean, HouseholdStore, HouseholdPictures, String, long, Runnable)};
+     * {@code question}: a Parent PIN the TV that connects asks the other about (null: none). It is answered as soon
+     * as the other TV says what it has seen, before entries move.
+     */
+    static Result run(InputStream in, OutputStream out, boolean initiator, HouseholdStore store,
+            HouseholdPictures pictures, String name, long now, Runnable proven, PinQuestion question)
+            throws IOException, GeneralSecurityException {
         if (!store.syncs() || store.log() == null) throw new SyncException("Not in a household");
         HouseholdSync sync = new HouseholdSync(in, out, initiator, store.tvId(), store.householdId());
         sync.bind(store, pictures, name, now);
         sync.proven = proven;
+        sync.question = initiator ? question : null;
         try {
             return sync.exchange();
         } catch (JSONException | IllegalArgumentException e) {
@@ -221,8 +272,18 @@ final class HouseholdSync {
      */
     static Result run(Accepted accepted, HouseholdStore store, HouseholdPictures pictures, String name, long now)
             throws IOException, GeneralSecurityException {
+        return run(accepted, store, pictures, name, now, null);
+    }
+
+    /**
+     * As {@link #run(Accepted, HouseholdStore, HouseholdPictures, String, long)}; {@code desk} answers a Parent PIN
+     * the other TV asks about, once it is known to be a member.
+     */
+    static Result run(Accepted accepted, HouseholdStore store, HouseholdPictures pictures, String name, long now,
+            PinDesk desk) throws IOException, GeneralSecurityException {
         HouseholdSync sync = accepted.sync;
         sync.bind(store, pictures, name, now);
+        sync.desk = desk;
         try {
             return sync.exchange();
         } catch (JSONException | IllegalArgumentException e) {
@@ -270,10 +331,21 @@ final class HouseholdSync {
         JSONObject vector = new JSONObject().put("vector", vectorJson(store.log().vector()));
         JSONObject peerVector;
         if (initiator) {
+            // A Parent PIN to check goes along, sealed like the rest, to a TV that has proved it's a member
+            if (question != null) {
+                vector.put("pin_ask", new JSONObject().put("scope", question.scope).put("pin", question.pin));
+            }
             writeJson(vector);
             peerVector = readJson();
+            if (question != null) question.answered(peerVector.optJSONObject("pin_answer"));
         } else {
             peerVector = readJson();
+            JSONObject ask = peerVector.optJSONObject("pin_ask");
+            if (ask != null) {
+                JSONObject said = desk == null ? null
+                        : desk.answer(peer, ask.optString("scope", ""), ask.optString("pin", ""));
+                vector.put("pin_answer", said != null ? said : new JSONObject().put("a", "unknown"));
+            }
             writeJson(vector);
         }
         Map<String, Long> theirVector = readVector(peerVector.getJSONObject("vector"));

@@ -2,24 +2,35 @@ package com.thesiegs.hearth;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.regex.Pattern;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Checks a PIN against the Parent PIN as the app keeps it (ParentPinHash in Dart): {@code v2$<iterations>$<salt>$<hash>}
- * (PBKDF2-HMAC-SHA256, hex), or the old unsalted form (64 hex digits). A TV can hold either: one set here, or one that
- * came from the household.
+ * A Parent PIN as a TV keeps it (ParentPinHash in Dart): never the PIN, {@code v2$<iterations>$<salt>$<hash>}
+ * (PBKDF2-HMAC-SHA256, hex). Only that form is checked. The old unsalted form (64 hex digits) is no longer one: a
+ * four-digit PIN kept that way is the PIN for whoever holds it, so a value still stored so is worked out once
+ * ({@link #pinOfLegacy}) and kept salted.
+ *
+ * <p>A <b>version</b> ({@link #isTag}) has the same shape with 0 iterations, so it checks no PIN anywhere, on any
+ * build: it only says which Parent PIN a TV follows, and is what the household's TVs tell each other in place of the
+ * hash (docs/household-sync.md, Parent PIN).
  */
 final class ParentPinHash {
+    static final Pattern SALTED = Pattern.compile("^v2\\$[0-9]{1,7}\\$[0-9a-f]{32}\\$[0-9a-f]{64}$");
+    static final Pattern LEGACY = Pattern.compile("^[0-9a-f]{64}$");
+    static final int ITERATIONS = 10_000;
+    private static final String TAG_PREFIX = "v2$0$";
+    private static final SecureRandom RANDOM = new SecureRandom();
+
     private ParentPinHash() {
     }
 
     static boolean verify(String pin, String stored) {
-        if (pin == null || stored == null || !Household.PARENT_PIN_HASH.matcher(stored).matches()) return false;
+        if (pin == null || stored == null || !SALTED.matcher(stored).matches()) return false;
         try {
-            if (stored.length() == 64) return same(Hex.of(MessageDigest.getInstance("SHA-256")
-                    .digest(("ltv-parent-pin:" + pin).getBytes(StandardCharsets.UTF_8))), stored);
             String[] parts = stored.split("\\$");
             int cost = Integer.parseInt(parts[1]);
             if (cost < 1 || cost > 200_000) return false;
@@ -28,6 +39,60 @@ final class ParentPinHash {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** What a TV keeps for {@code pin}: the salted form, with a fresh salt. Null if it can't be made. */
+    static String make(String pin) {
+        byte[] salt = new byte[16];
+        RANDOM.nextBytes(salt);
+        try {
+            byte[] derived = pbkdf2(pin.getBytes(StandardCharsets.UTF_8), salt, ITERATIONS, 32);
+            return "v2$" + ITERATIONS + "$" + Hex.of(salt) + "$" + Hex.of(derived);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Whether {@code value} is a version: the stored shape, but checking no PIN. */
+    static boolean isTag(String value) {
+        return value != null && value.startsWith(TAG_PREFIX) && SALTED.matcher(value).matches();
+    }
+
+    /**
+     * The version of a stored salted hash (a version is its own): the same on every TV that holds that hash, and of no
+     * use for guessing the PIN without it (the hash's random salt is hashed in). Null for anything else.
+     */
+    static String tagOf(String stored) {
+        if (stored == null || !SALTED.matcher(stored).matches()) return null;
+        if (isTag(stored)) return stored;
+        try {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            String a = Hex.of(sha.digest(("hearth-parent-pin-version:" + stored).getBytes(StandardCharsets.UTF_8)));
+            String b = Hex.of(sha.digest(("hearth-parent-pin-version-2:" + stored).getBytes(StandardCharsets.UTF_8)));
+            return TAG_PREFIX + a.substring(0, 32) + "$" + b;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * The PIN an old unsalted value was made from (four digits, as every pad took), or null when it isn't one. This
+     * is the migration for values still stored that way, and why the form went: it takes a moment.
+     */
+    static String pinOfLegacy(String stored) {
+        if (stored == null || !LEGACY.matcher(stored).matches()) return null;
+        try {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            for (int i = 0; i < 10_000; i++) {
+                String pin = String.format(java.util.Locale.ROOT, "%04d", i);
+                if (same(Hex.of(sha.digest(("ltv-parent-pin:" + pin).getBytes(StandardCharsets.UTF_8))), stored)) {
+                    return pin;
+                }
+            }
+        } catch (Exception e) {
+            // Not one
+        }
+        return null;
     }
 
     /** PBKDF2-HMAC-SHA256 (RFC 8018), as the Dart side computes it. */

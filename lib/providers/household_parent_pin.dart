@@ -23,13 +23,23 @@ enum ParentPinStep {
   ask,
 }
 
-/// The household's Parent PIN (docs/household-sync.md, "Parent PIN"): one for every TV, kept as the salted hash, never
-/// the PIN, the newest change winning. A TV that joins without a Parent PIN takes the household's. A TV with its own,
-/// different one is asked for the household's before it takes it. A change made here (which needs the PIN here) goes
-/// out. What this TV last took or gave is remembered, which is how a change here is told from one in the household.
+/// The household's Parent PIN (docs/household-sync.md, "Parent PIN"): one for every TV, the newest change winning.
+/// What the TVs tell each other is its **version** (ParentPinHash.isTag), never the PIN and no longer its hash: a TV
+/// keeps a hash only of a PIN that was typed on it. A TV that follows a version it holds no hash of asks the other
+/// TVs when the PIN is typed (the Java side: HaParentPins), and keeps what one of them confirms.
+///
+/// A TV that joins without a Parent PIN takes the household's. A TV with its own, different one is asked for the
+/// household's before it takes it. A change made here (which needs the PIN here) goes out. What this TV last took or
+/// gave is remembered, which is how a change here is told from one in the household.
+///
+/// A household whose entry an older build wrote still holds the hash: a TV takes it with its version (every TV works
+/// out the same one from it), so nothing changes until a Parent PIN is next set, which writes a version in its place.
 class HouseholdParentPin {
-  /// device_: the TV's own, never in a backup. The hash this TV last took from or gave to the household.
+  /// device_: the TV's own, never in a backup. The version this TV last took from or gave to the household.
   static const String knownKey = "device_household_parent_pin_known";
+
+  /// What [SettingsService.householdParentPinOffered] holds for a household PIN an old build left unsalted.
+  static const String legacyOffer = "legacy";
 
   final FLauncherChannel _channel;
   final SharedPreferences _prefs;
@@ -37,9 +47,9 @@ class HouseholdParentPin {
 
   HouseholdParentPin(this._channel, this._prefs, this._settings);
 
-  /// The rule, pure: [household] is the household's hash (null when it has none), [householdRemoved] when it had one
-  /// and removed it; [local] this TV's; [known] what this TV last took or gave ("" for none; null: nothing yet since
-  /// it joined).
+  /// The rule, pure: [household] is the household's version (null when it has none), [householdRemoved] when it had
+  /// one and removed it; [local] this TV's; [known] what this TV last took or gave ("" for none; null: nothing yet
+  /// since it joined).
   static ParentPinStep decide(
       {required String? household, required bool householdRemoved, required String? local, required String? known}) {
     if (known == null) {
@@ -56,8 +66,7 @@ class HouseholdParentPin {
   }
 
   /// One round: first Home Assistant's parent PINs; while the TV uses those, the household's isn't synced (each TV
-  /// takes them from Home Assistant). Outside a household, forgets what it knew (a household joined later starts
-  /// fresh).
+  /// asks Home Assistant). Outside a household, forgets what it knew (a household joined later starts fresh).
   Future<void> tick() async {
     try {
       final fromHa = await _channel.getHaParentPins();
@@ -69,25 +78,60 @@ class HouseholdParentPin {
         return;
       }
       final state = await _channel.getHouseholdParentPin();
-      if (state == null) {
+      if (state == null || state["state"] == "out") {
         await _prefs.remove(knownKey);
         await _settings.setHouseholdParentPinOffered(null);
+        // In no household any more, following a PIN that was only ever typed on other TVs: nobody is left to say
+        // what it is, so it goes rather than lock this TV for good. (One typed here before is kept by the Java side
+        // and still works.)
+        if (state != null &&
+            fromHa != null &&
+            fromHa["ownKnown"] == false &&
+            _settings.parentPinHash == null &&
+            _settings.parentPinVersion != null) {
+          await _settings.setParentPin(null);
+        }
         return;
       }
-      final hash = state["state"] == "live" ? state["hash"] as String? : null;
-      final household = hash != null && ParentPinHash.pattern.hasMatch(hash) ? hash : null;
-      final local = _settings.parentPinHash;
+      await _migrateKnown();
+      final live = state["state"] == "live";
+      final entryVersion = live ? state["version"] : null;
+      final entryHash = live ? state["hash"] : null;
+      // An older build's entry: the hash itself, which this TV may keep (it is in the household's entries anyway)
+      final hash = entryHash is String && ParentPinHash.pattern.hasMatch(entryHash) && !ParentPinHash.isTag(entryHash)
+          ? entryHash
+          : null;
+      var household = hash != null
+          ? ParentPinHash.tagOf(hash)
+          : (entryVersion is String && ParentPinHash.isTag(entryVersion) ? entryVersion : null);
+      final known = _prefs.getString(knownKey);
+      // An old build's unsalted entry is the PIN for whoever holds it: it's worked out, and replaced
+      final legacy = live ? state["legacy"] : null;
+      final legacyPin = legacy is String ? ParentPinHash.pinOfLegacy(legacy) : null;
+      if (legacyPin != null) {
+        if (_settings.parentPinVersion == null) {
+          await _settings.setParentPin(legacyPin);
+        } else if (known == null && !_settings.verifyParentPin(legacyPin)) {
+          // This TV had another PIN of its own when it joined: asked for the household's first, as ever
+          await _settings.setHouseholdParentPinOffered(legacyOffer);
+          return;
+        }
+        // This TV holds that PIN, salted: its version goes out in the old entry's place
+        household = null;
+      }
+      final local = _settings.parentPinVersion;
       final step = decide(
-          household: household,
-          householdRemoved: state["state"] == "removed",
-          local: local,
-          known: _prefs.getString(knownKey));
+          household: household, householdRemoved: state["state"] == "removed", local: local, known: known);
       switch (step) {
         case ParentPinStep.none:
           await _setKnown(local);
           await _settings.setHouseholdParentPinOffered(null);
         case ParentPinStep.take:
-          await _settings.setParentPinHash(household!);
+          if (hash != null) {
+            await _settings.setParentPinHash(hash);
+          } else {
+            await _settings.setParentPinPending(household!);
+          }
           await _setKnown(household);
           await _settings.setHouseholdParentPinOffered(null);
         case ParentPinStep.remove:
@@ -95,6 +139,7 @@ class HouseholdParentPin {
           await _setKnown(null);
         case ParentPinStep.give:
           if (await _channel.publishHouseholdParentPin(local)) await _setKnown(local);
+          await _settings.setHouseholdParentPinOffered(null);
         case ParentPinStep.ask:
           await _settings.setHouseholdParentPinOffered(household);
       }
@@ -103,6 +148,14 @@ class HouseholdParentPin {
     }
   }
 
+  /// What this TV last took or gave was remembered as the hash by older builds: now its version. (An unsalted one
+  /// has no version: forgotten as "none", so this TV's own, salted since, goes out.)
+  Future<void> _migrateKnown() async {
+    final known = _prefs.getString(knownKey);
+    if (known == null || known.isEmpty || ParentPinHash.isTag(known)) return;
+    await _prefs.setString(knownKey, ParentPinHash.tagOf(known) ?? "");
+  }
+
   /// Null is remembered as "" (known to be none), so a removal here isn't taken for "never synced".
-  Future<void> _setKnown(String? hash) => _prefs.setString(knownKey, hash ?? "");
+  Future<void> _setKnown(String? version) => _prefs.setString(knownKey, version ?? "");
 }

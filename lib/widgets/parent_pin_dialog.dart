@@ -270,6 +270,8 @@ class ParentPinDialog extends StatefulWidget {
 class _ParentPinDialogState extends State<ParentPinDialog> {
   String _entered = "";
   bool _error = false;
+  // Why the last PIN wasn't taken, when it wasn't judged wrong: whoever could say wasn't reached (PinNotChecked)
+  String? _notChecked;
   Timer? _tick;
   Timer? _phoneTimer;
   // Whether a parent's phone was asked, and whether it said no
@@ -365,6 +367,7 @@ class _ParentPinDialogState extends State<ParentPinDialog> {
     if (_entered.length < widget.length) return;
 
     var ok = true;
+    String? notChecked;
     if (widget.verify != null) {
       _checking = true;
       // The TV's count first: a wait started on another pad (HearthTube's, another of Hearth's) holds here too,
@@ -386,6 +389,10 @@ class _ParentPinDialogState extends State<ParentPinDialog> {
       } on PinPadClose catch (close) {
         if (mounted) Navigator.of(context).pop(close.value);
         return;
+      } on PinNotChecked catch (unreached) {
+        // Not one this TV has learned, and nobody who could say was reached: a wrong try all the same
+        ok = false;
+        notChecked = unreached.reason;
       } catch (_) {
         ok = false;
       } finally {
@@ -401,7 +408,10 @@ class _ParentPinDialogState extends State<ParentPinDialog> {
     await _lockout.miss(DateTime.now()).catchError((_) {});
     if (!mounted) return;
     if (_locked) _lock();
-    setState(() => _error = true);
+    setState(() {
+      _error = true;
+      _notChecked = notChecked;
+    });
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) setState(() => _entered = "");
     });
@@ -451,6 +461,11 @@ class _ParentPinDialogState extends State<ParentPinDialog> {
                       const SizedBox(height: 16),
                       Text(_phoneNote ?? (_phoneDenied ? l.parentPinPhoneDenied : l.parentPinPhoneAsked),
                           style: const TextStyle(color: _textDim, fontSize: 15)),
+                    ],
+                    if (_notChecked != null) ...[
+                      const SizedBox(height: 16),
+                      Text(_notChecked == PinNotChecked.otherTvs ? l.parentPinNoTvs : l.parentPinNoHa,
+                          style: const TextStyle(color: Color(0xFFF2B8B5), fontSize: 15)),
                     ],
                     if (widget.note != null)
                       ValueListenableBuilder<String?>(

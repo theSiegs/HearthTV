@@ -76,7 +76,7 @@ final class ParentPinPolicy {
             result.putInt("wait_seconds", (int) ((until - now + 999) / 1000));
             return result;
         }
-        // The adults' from Home Assistant while there are any, else the TV's own (either form ParentPinHash keeps)
+        // Home Assistant's adults' while it sets them, else the TV's own, asking whoever can say (HaParentPins)
         boolean ok = HaParentPins.verify(context, pin);
         if (ok) {
             clear(context);

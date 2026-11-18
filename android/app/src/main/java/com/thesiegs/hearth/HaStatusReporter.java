@@ -471,7 +471,7 @@ final class HaStatusReporter {
         status.put("media_position_at", position == null ? JSONObject.NULL : position.at);
         status.put("now_playing_available", s.nowPlayingAvailable);
         status.put("pin_lockouts", HaParentPins.lockouts(mContext));
-        // The parent PINs' hashes come in the answer only when they changed since these
+        // The version of Home Assistant's parent PINs this TV follows (contract 4: it is sent no hashes, it asks)
         status.put("parent_pins_version", HaParentPins.version(mContext));
         // What this TV does beyond what every TV did before caps: its state document carries notices
         status.put("caps", new JSONArray(CAPS));

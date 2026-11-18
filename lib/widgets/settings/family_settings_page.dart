@@ -131,9 +131,9 @@ class FamilySettingsPage extends StatelessWidget {
       builder: (_) => ParentPinDialog(
           title: l.parentPinHouseholdTitle,
           subtitle: l.parentPinHouseholdSubtitle,
-          verify: settings.verifyHouseholdParentPin),
+          verify: settings.checkHouseholdParentPin),
     );
-    if (pin != null) await settings.takeHouseholdParentPin();
+    if (pin != null) await settings.takeHouseholdParentPin(pin);
   }
 
   Future<void> _editParentPin(BuildContext context) async {

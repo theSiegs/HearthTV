@@ -731,6 +731,14 @@ final class Household {
     private static final HouseholdTurns TURNS = new HouseholdTurns();
 
     private static void exchangeWith(HouseholdNet.Peer peer, String why) {
+        exchangeWith(peer, why, null);
+    }
+
+    /**
+     * As {@link #exchangeWith(HouseholdNet.Peer, String)}, asking that TV about a Parent PIN on the way
+     * ({@code question}; null: nothing). True when the exchange gave way to one another TV opened.
+     */
+    private static boolean exchangeWith(HouseholdNet.Peer peer, String why, HouseholdSync.PinQuestion question) {
         HouseholdStore store = store(sContext);
         try (Socket socket = new Socket()) {
             // Anything can announce itself as a TV of the household: one that doesn't prove it's a member in time is
@@ -742,13 +750,14 @@ final class Household {
                     socket.setSoTimeout(SOCKET_TIMEOUT_MS);
                     HouseholdSync.Result result = HouseholdSync.run(socket.getInputStream(), socket.getOutputStream(),
                             true, store, pictures(sContext), ShareDiscovery.deviceName(sContext),
-                            System.currentTimeMillis(), () -> deadline.cancel(false));
+                            System.currentTimeMillis(), () -> deadline.cancel(false), question);
                     finish(store, result, "to " + why);
                 });
                 if (outcome == HouseholdTurns.Outcome.GAVE_WAY) {
                     Log.i(TAG, "Gave way to an exchange another TV opened at the same time");
                     // The one given way to may be another TV's (TVs waiting on each other in a ring): this one's again
                     if (!TURNS.served(peer.tvId)) syncSoon();
+                    return true;
                 }
             } finally {
                 deadline.cancel(false);
@@ -757,6 +766,54 @@ final class Household {
             sLastResult = "failed: " + e.getClass().getSimpleName();
             Log.i(TAG, "Couldn't sync with a TV of the household: " + why(e));
         }
+        return false;
+    }
+
+    /** How long a Parent PIN pad waits on the household's other TVs, in all. */
+    private static final long PIN_ASK_MS = 6_000;
+
+    /**
+     * Asks the household's other TVs that are on whether {@code pin} is the Parent PIN of {@code scope}
+     * (HaParentPins: the household's own of a version, or one learned from Home Assistant), one after the other
+     * until one says yes or no (blocking, {@link #PIN_ASK_MS} at most; not on the main thread or the household's). The
+     * PIN goes in an exchange, so only to a TV on the member list that proved its key, sealed for it alone. A TV that
+     * locks this one out is remembered while the others are asked. UNKNOWN: none could say, or none was reached.
+     */
+    static HaParentPins.PeerAnswer askParentPin(Context context, String scope, String pin) {
+        if (!mayBeInHousehold(context)) return HaParentPins.PeerAnswer.UNKNOWN;
+        long deadline = android.os.SystemClock.elapsedRealtime() + PIN_ASK_MS;
+        HaParentPins.PeerAnswer waits = null;
+        for (HouseholdNet.Peer peer : HouseholdNet.peers()) {
+            long left = deadline - android.os.SystemClock.elapsedRealtime();
+            if (left <= 0) break;
+            HouseholdSync.PinQuestion question = new HouseholdSync.PinQuestion(scope, pin);
+            try {
+                EXEC.execute(() -> {
+                    try {
+                        if (sContext == null || !member(sContext)) return;
+                        // Once more when it gave way to an exchange that TV opened, which carried no question
+                        if (exchangeWith(peer, "check a Parent PIN", question) && member(sContext)) {
+                            exchangeWith(peer, "check a Parent PIN", question);
+                        }
+                    } finally {
+                        question.answered(null);
+                    }
+                });
+                HaParentPins.PeerAnswer answer = HaParentPins.peerAnswer(question.await(left));
+                if (answer.kind == HaParentPins.PeerAnswer.Kind.YES || answer.kind == HaParentPins.PeerAnswer.Kind.NO) {
+                    return answer;
+                }
+                if (answer.kind == HaParentPins.PeerAnswer.Kind.WAIT && (waits == null || answer.retryS > waits.retryS)) {
+                    waits = answer;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (RuntimeException e) {
+                break;
+            }
+        }
+        return waits != null ? waits : HaParentPins.PeerAnswer.UNKNOWN;
     }
 
     /** Closes {@code socket} after {@link #PROVE_MS} unless the returned deadline is cancelled first. */
@@ -829,8 +886,12 @@ final class Household {
                     && HouseholdMembers.standing(store.log(), opened.peer()) == HouseholdMembers.Standing.UNKNOWN) {
                 newcomerSeen();
             }
+            // A Parent PIN that TV asks about is answered from what this TV can check itself, in that TV's own count
+            // of wrong tries (HaParentPins.answerPeer)
             HouseholdSync.Result result = HouseholdSync.run(opened, store, pictures(sContext),
-                    ShareDiscovery.deviceName(sContext), System.currentTimeMillis());
+                    ShareDiscovery.deviceName(sContext), System.currentTimeMillis(),
+                    (peer, scope, pin) -> HaParentPins.answerPeer(sContext, peer, scope, pin,
+                            System.currentTimeMillis()));
             finish(store, result, "from a TV");
         } catch (IOException | java.security.GeneralSecurityException | RuntimeException e) {
             Log.i(TAG, "A TV tried to sync and couldn't: " + why(e));
@@ -1399,48 +1460,60 @@ final class Household {
 
     // ---- The Parent PIN (the app keeps it: HouseholdParentPin on the Dart side) ----
 
-    /** What a stored Parent PIN may look like (ParentPinHash in Dart): the old 64 hex digits or the salted form. */
-    static final java.util.regex.Pattern PARENT_PIN_HASH =
-            java.util.regex.Pattern.compile("^([0-9a-f]{64}|v2\\$[0-9]{1,7}\\$[0-9a-f]{32}\\$[0-9a-f]{64})$");
-
     /**
-     * The household's Parent PIN: {state: "live" (with its hash), "removed" or "none"}; null when this TV isn't a
-     * member. Read from the log as last saved, so an exchange on the household thread doesn't hold it up. Blocks: not
-     * on the main thread.
+     * The household's Parent PIN: {state: "live", "removed" or "none"}; {state: "out"} when this TV is in no household
+     * (never was, or was removed from it); null when it can't be read just now. A live one says its "version"
+     * (ParentPinHash.isTag), which is all a TV writes now. One written by an older build is the hash itself: "hash"
+     * (salted, with the version every TV works out from it), or "legacy" (the old unsalted form, no version). Read
+     * from the log as last saved, so an exchange on the household thread doesn't hold it up. Blocks: not on the main
+     * thread.
      */
     static Map<String, Object> parentPin(Context context) {
-        if (!mayBeInHousehold(context)) return null;
+        Map<String, Object> out = new HashMap<>();
+        out.put("state", "out");
+        if (!mayBeInHousehold(context)) return out;
         Context app = context.getApplicationContext();
         try {
-            return readSaved(app, log -> {
-                HouseholdEntry entry = log.entry(HouseholdBridge.PARENT_PIN, HouseholdBridge.SHARED, "");
-                Map<String, Object> out = new HashMap<>();
-                if (entry == null) {
-                    out.put("state", "none");
-                } else if (entry.deleted) {
-                    out.put("state", "removed");
-                } else if (PARENT_PIN_HASH.matcher(entry.value).matches()) {
-                    out.put("state", "live");
-                    out.put("hash", entry.value);
-                } else {
-                    // Not one a TV would write: as if there were none, and this TV's can replace it
-                    out.put("state", "none");
-                }
-                return out;
-            });
+            if (store(app).removed()) return out;
+            return readSaved(app, log -> parentPinOf(log.entry(HouseholdBridge.PARENT_PIN, HouseholdBridge.SHARED, "")));
         } catch (Exception e) {
             Log.i(TAG, "Couldn't read the household's Parent PIN: " + why(e));
             return null;
         }
     }
 
+    /** What the household's Parent PIN entry says ({@link #parentPin}). */
+    static Map<String, Object> parentPinOf(HouseholdEntry entry) {
+        Map<String, Object> out = new HashMap<>();
+        if (entry == null) {
+            out.put("state", "none");
+        } else if (entry.deleted) {
+            out.put("state", "removed");
+        } else if (ParentPinHash.isTag(entry.value)) {
+            out.put("state", "live");
+            out.put("version", entry.value);
+        } else if (ParentPinHash.SALTED.matcher(entry.value).matches()) {
+            out.put("state", "live");
+            out.put("version", ParentPinHash.tagOf(entry.value));
+            out.put("hash", entry.value);
+        } else if (ParentPinHash.LEGACY.matcher(entry.value).matches()) {
+            out.put("state", "live");
+            out.put("legacy", entry.value);
+        } else {
+            // Not one a TV would write: as if there were none, and this TV's can replace it
+            out.put("state", "none");
+        }
+        return out;
+    }
+
     /**
-     * This TV's Parent PIN (its stored hash; null: removed) for the household. The app decides when (HouseholdParentPin):
-     * only a change made here, past the PIN, goes out. False when this TV isn't a member or the hash isn't one. Blocks:
-     * not on the main thread.
+     * This TV's Parent PIN for the household: its version (ParentPinHash.isTag), never a hash; null: removed. The app
+     * decides when (HouseholdParentPin): only a change made here, past the PIN, goes out. False when this TV isn't a
+     * member or {@code version} isn't one. Blocks: not on the main thread.
      */
-    static boolean publishParentPin(Context context, String hash) {
-        if (!mayBeInHousehold(context) || (hash != null && !PARENT_PIN_HASH.matcher(hash).matches())) return false;
+    static boolean publishParentPin(Context context, String version) {
+        final String hash = version;
+        if (!mayBeInHousehold(context) || (version != null && !ParentPinHash.isTag(version))) return false;
         Context app = context.getApplicationContext();
         try {
             return EXEC.submit(() -> {
@@ -1926,7 +1999,13 @@ final class Household {
         } else if (index < 0 || index >= n.actions.size() || (pin != null && !pin.matches("[0-9]{4,12}"))) {
             result = new HaNotices.Result(HaNotices.Outcome.BAD_REQUEST, 0);
         } else {
+            // A PIN Home Assistant takes for the button is one it confirmed, typed here: learned like any other, for
+            // the version followed when it was asked
+            String pinsVersion = HaParentPins.version(context);
             result = HaIntegration.pressNotice(context, n.key, n.actions.get(index).id, pin);
+            if (pin != null && result.outcome == HaNotices.Outcome.DONE && HaParentPins.managed(context)) {
+                HaParentPins.learn(context, pinsVersion, pin);
+            }
         }
         if (n != null && (result.outcome == HaNotices.Outcome.DONE || result.outcome == HaNotices.Outcome.GONE)) {
             String key = n.key;

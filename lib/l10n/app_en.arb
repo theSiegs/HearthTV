@@ -1567,6 +1567,14 @@
             "seconds": {"type": "int"}
         }
     },
+    "parentPinNoHa": "Can't reach Home Assistant. Only a PIN used on this TV before works.",
+    "@parentPinNoHa": {
+        "description": "Under the Parent PIN pad's title after a PIN that wasn't taken: Home Assistant checks the adults' PINs, it can't be reached, and the PIN isn't one that was typed on this TV before"
+    },
+    "parentPinNoTvs": "Can't reach your other TVs. Only a PIN used on this TV before works.",
+    "@parentPinNoTvs": {
+        "description": "Under the Parent PIN pad's title after a PIN that wasn't taken: the Parent PIN was set on another TV of the household, none of them can be reached, and the PIN wasn't typed on this TV before"
+    },
     "parentPinWrong": "WRONG PIN",
     "@parentPinWrong": {
         "description": "PIN screen: small capitals above the digits after a wrong PIN"

@@ -2497,6 +2497,18 @@ abstract class AppLocalizations {
   /// **'TOO MANY TRIES. WAIT {seconds} s'**
   String parentPinLocked(int seconds);
 
+  /// Under the Parent PIN pad's title after a PIN that wasn't taken: Home Assistant checks the adults' PINs, it can't be reached, and the PIN isn't one that was typed on this TV before
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach Home Assistant. Only a PIN used on this TV before works.'**
+  String get parentPinNoHa;
+
+  /// Under the Parent PIN pad's title after a PIN that wasn't taken: the Parent PIN was set on another TV of the household, none of them can be reached, and the PIN wasn't typed on this TV before
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach your other TVs. Only a PIN used on this TV before works.'**
+  String get parentPinNoTvs;
+
   /// PIN screen: small capitals above the digits after a wrong PIN
   ///
   /// In en, this message translates to:

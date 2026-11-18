@@ -400,7 +400,7 @@ class HouseholdLooksService implements HouseholdJoinReviewer {
     final pin = await _channel.getHouseholdParentPin();
     return JoinPreview(
       profiles: profiles,
-      parentPin: pin?["state"] == "live" && _settings.parentPinHash == null,
+      parentPin: pin?["state"] == "live" && _settings.parentPinVersion == null,
       tvPins: (java["tvPins"] as num?)?.toInt() ?? 0,
     );
   }

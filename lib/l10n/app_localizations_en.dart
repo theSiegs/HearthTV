@@ -1466,6 +1466,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get parentPinNoHa =>
+      'Can\'t reach Home Assistant. Only a PIN used on this TV before works.';
+
+  @override
+  String get parentPinNoTvs =>
+      'Can\'t reach your other TVs. Only a PIN used on this TV before works.';
+
+  @override
   String get parentPinWrong => 'WRONG PIN';
 
   @override

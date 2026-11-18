@@ -582,18 +582,25 @@ class FLauncherChannel {
       await _methodChannel
           .invokeMethod<String>("publishHouseholdPicture", {"profile": profileKey, "slot": slot, "jpeg": jpeg});
 
-  /// The household's Parent PIN: {state: "live" (with `hash`, the salted hash), "removed" or "none"}; null outside a
-  /// household.
+  /// The household's Parent PIN: {state: "live", "removed" or "none"}, or {state: "out"} in no household; null when
+  /// it can't be read just now. A live one says its `version`; one an older build wrote also its `hash` (salted), or
+  /// only `legacy` (the old unsalted form).
   Future<Map<dynamic, dynamic>?> getHouseholdParentPin() async =>
       await _methodChannel.invokeMapMethod<dynamic, dynamic>("getHouseholdParentPin");
 
-  /// The adults' parent PINs from the Hearth integration (HaParentPins.java): {kept: bool, managed: bool}.
+  /// Where the Parent PIN stands on the Java side (HaParentPins.java): {kept: Home Assistant's are the Parent PIN here,
+  /// managed: it sets them now, ownKnown: the TV's own can be checked with no other TV}.
   Future<Map<dynamic, dynamic>?> getHaParentPins() async =>
       await _methodChannel.invokeMapMethod<dynamic, dynamic>("getHaParentPins");
 
-  /// Whether [pin] is a Parent PIN, checked on the Java side (Home Assistant's answer when it's reachable).
-  Future<bool> verifyParentPin(String pin) async =>
-      await _methodChannel.invokeMethod<bool>("verifyParentPin", pin) ?? false;
+  /// Whether [pin] is a Parent PIN, checked on the Java side by whoever decides (HaParentPins.check): "yes", "no", or
+  /// "no_ha" / "no_tvs" when it isn't one learned here and Home Assistant / the other TVs weren't reached.
+  Future<String> verifyParentPin(String pin) async =>
+      await _methodChannel.invokeMethod<String>("verifyParentPin", pin) ?? "no";
+
+  /// The same for the household's Parent PIN, on a TV that kept its own when it joined.
+  Future<String> verifyHouseholdParentPin(String pin) async =>
+      await _methodChannel.invokeMethod<String>("verifyHouseholdParentPin", pin) ?? "no";
 
   /// A Parent PIN of this TV's own was set: the kept Home Assistant ones go.
   Future<void> forgetHaParentPins() async => await _methodChannel.invokeMethod("forgetHaParentPins");
@@ -615,9 +622,9 @@ class FLauncherChannel {
   /// A Parent PIN pad here locked out wrong guesses (counted for the integration).
   Future<void> noteParentPinLockout() async => await _methodChannel.invokeMethod("noteParentPinLockout");
 
-  /// This TV's Parent PIN as it keeps it (a hash; null: removed) for the household; false when it isn't taken.
-  Future<bool> publishHouseholdParentPin(String? hash) async =>
-      await _methodChannel.invokeMethod<bool>("publishHouseholdParentPin", hash) ?? false;
+  /// This TV's Parent PIN for the household: its version, never the hash (null: removed); false when it isn't taken.
+  Future<bool> publishHouseholdParentPin(String? version) async =>
+      await _methodChannel.invokeMethod<bool>("publishHouseholdParentPin", version) ?? false;
 
   /// Removes another TV of the household (by its tvId from `members`); false if it couldn't be.
   Future<bool> removeHouseholdTv(String tvId) async =>

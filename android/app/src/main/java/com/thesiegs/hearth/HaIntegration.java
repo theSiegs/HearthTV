@@ -410,8 +410,8 @@ final class HaIntegration {
         if (answer.code == 200 && answer.body != null) {
             return answer.body.optBoolean("ok", false) ? HaParentPins.Verdict.YES : HaParentPins.Verdict.NO;
         }
-        // Locked out there: no, even for the right PIN, as on a phone
-        if (answer.code == 429) return HaParentPins.Verdict.NO;
+        // Locked out there: no, even for the right PIN, as on a phone (so nothing is learned from it either way)
+        if (answer.code == 429) return HaParentPins.Verdict.LOCKED;
         return HaParentPins.Verdict.UNKNOWN;
     }
 
@@ -589,7 +589,7 @@ final class HaIntegration {
     }
 
     /** The device contract this build speaks (the integration's docs/contracts/device-api.md). */
-    static final int CONTRACT = 3;
+    static final int CONTRACT = 4;
 
     /**
      * Which app this is, for the pair and status bodies (contract 3): the integration locks it at pairing. Hearth TV
