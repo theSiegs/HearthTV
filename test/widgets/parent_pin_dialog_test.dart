@@ -415,6 +415,40 @@ void main() {
       expect(store.cleared, isFalse);
     });
 
+    for (final (reason, said) in [
+      (PinNotChecked.homeAssistant, "Can't reach Home Assistant. Only a PIN used on this TV before works."),
+      (PinNotChecked.otherTvs, "Can't reach your other TVs. Only a PIN used on this TV before works."),
+    ]) {
+      testWidgets("a PIN nobody could check offline ($reason) is a wrong try, and the pad says why", (tester) async {
+        final store = _FakeStore();
+        final lock = PinLockout()..store = store;
+        var reachable = false;
+        final outcome = await open(
+            tester,
+            ParentPinDialog(
+                title: "PIN",
+                verify: (pin) async {
+                  if (!reachable) throw PinNotChecked(reason);
+                  return pin == "2468";
+                },
+                lockout: lock));
+        await tester.tap(find.text("open"));
+        await tester.pumpAndSettle();
+        await type(tester, "2468");
+        await tester.pump();
+        expect(find.text(said), findsOneWidget);
+        expect(find.text("WRONG PIN"), findsOneWidget);
+        expect(store.misses, 1);
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(await outcome(), "still open");
+        // Reached again: the same PIN is taken
+        reachable = true;
+        await type(tester, "2468");
+        await tester.pumpAndSettle();
+        expect(await outcome(), isNot("still open"));
+      });
+    }
+
     testWidgets("the phones asked another way say so on the pad, and the PIN still works", (tester) async {
       final lock = PinLockout()..store = _FakeStore();
       final outcome = await open(

@@ -478,23 +478,43 @@ in an adult's row.
 
 ## Parent PIN
 
-The Parent PIN is one value for the household, and every change to it syncs, like any entry (newest wins). It syncs as
-a salted hash, never the PIN. Setting, changing or removing it needs the current Parent PIN on the TV where it is done,
+The Parent PIN is one value for the household, and every change to it syncs, like any entry (newest wins). What syncs
+is only its **version**, never the PIN and no longer its hash: a four-digit PIN's hash can be tried against all 10,000
+PINs in under a minute. A TV keeps a hash only of a PIN typed on it. Setting, changing or removing it needs the current Parent PIN on the TV where it is done,
 so a kid can't change it on one TV and carry the change to the rest. A TV that joins takes the household's Parent PIN.
 A TV that has its own, different Parent PIN is asked for the household's before it takes it, so a join can't silently
 replace a PIN.
 
-**How it's built.** One `parent_pin` entry for the whole household (profile "", item ""), its value the stored hash.
-The app's side decides (HouseholdParentPin, every 20 seconds while Hearth TV runs, with the looks), remembering the hash it
-last took or gave:
+**How it's built.** One `parent_pin` entry for the whole household (profile "", item ""), its value the version
+(`v2$0$<32 hex>$<64 hex>`: the stored shape with 0 iterations, so it verifies no PIN on any build, worked out from
+the hash, and the same on every TV that holds that hash). The app's side decides (HouseholdParentPin, every 20 seconds
+while Hearth TV runs, with the looks), remembering the version it last took or gave:
 
 - No Parent PIN here: the household's is taken, so a TV set up by joining needs no Parent PIN step.
 - Here before joining, and different: kept. **Settings > Family** shows **Use your other TVs' Parent PIN**, which takes
   the household's once it's entered here. Until then this TV's own changes don't go out either.
 - Changed or removed here since (which took the PIN here): it goes out. Changed or removed on another TV: this TV
   follows. A household with none takes the first TV's.
-- Leaving the household forgets what was taken or given; the PIN stays. The Java side's check of the PIN (HearthTube,
-  the kids profiles' agent) reads the salted form too, so a PIN taken from the household works there.
+- Leaving the household (or being removed) forgets what was taken or given. A PIN typed here stays; one set on
+  another TV and never typed here goes, so the TV isn't left with a PIN nobody can check.
+- The household's entry can't be read just now: nothing changes.
+
+**Learning it from another TV.** A TV that follows a version it holds no hash of asks the other TVs when the PIN is
+typed: the question (`pin_ask`: the scope, `tv:<version>` or `ha:<version>`, and the PIN) rides in the sealed frame
+that says what this TV has seen, once each side has proved it's a member, so neither is readable on the wire. The
+other TV answers (`pin_answer`) only for that very version and only from what it can check itself: its own hash or
+one it learned says yes or no; a PIN it learned from Home Assistant says yes, never no (another adult's may be
+right); anything else is "can't say". A yes is kept here, sealed, and from then on this TV needs no other. Each
+asking TV has its own count of wrong tries on the answering TV, on the pad's schedule (5 free, then 30 seconds
+doubling to an hour), kept across restarts; its wait holds the asking TV's pad too, and a lockout there is reported
+to Home Assistant like one of the pad's. A TV not in the household, or removed, gets no answer. With no TV
+reached and the PIN never typed here, the pad says "Can't reach your other TVs. Only a PIN used on this TV before
+works." and counts a wrong try.
+
+A TV that kept its own PIN when it joined checks the household's the same way before taking it. An entry an older
+build wrote (the salted hash itself) is still taken, with its version; an old unsalted one is worked out once and
+replaced by this TV's version. While Home Assistant sets the parent PINs (paired, and it has some), the household's
+isn't used on that TV: see [Which Parent PIN works when](home-assistant-integration.md#which-parent-pin-works-when).
 
 ## Your TVs (the page)
 

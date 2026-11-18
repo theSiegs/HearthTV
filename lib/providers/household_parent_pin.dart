@@ -78,14 +78,15 @@ class HouseholdParentPin {
         return;
       }
       final state = await _channel.getHouseholdParentPin();
-      if (state == null || state["state"] == "out") {
+      // Can't be read just now: nothing changes (what this TV last took or gave is how a change here is told)
+      if (state == null) return;
+      if (state["state"] == "out") {
         await _prefs.remove(knownKey);
         await _settings.setHouseholdParentPinOffered(null);
         // In no household any more, following a PIN that was only ever typed on other TVs: nobody is left to say
         // what it is, so it goes rather than lock this TV for good. (One typed here before is kept by the Java side
         // and still works.)
-        if (state != null &&
-            fromHa != null &&
+        if (fromHa != null &&
             fromHa["ownKnown"] == false &&
             _settings.parentPinHash == null &&
             _settings.parentPinVersion != null) {

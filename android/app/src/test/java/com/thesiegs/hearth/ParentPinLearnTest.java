@@ -18,8 +18,8 @@ import java.util.Map;
 
 /**
  * Which Parent PIN a TV takes, and what it learns (HaParentPins): each row of the table in
- * docs/home-assistant-integration.md ("Which PIN works when"), with and without Home Assistant, and what another TV
- * of the household is told when it asks.
+ * docs/home-assistant-integration.md ("Which Parent PIN works when"; rowN_ is row N), with and without Home
+ * Assistant, and what another TV of the household is told when it asks.
  */
 public class ParentPinLearnTest {
     private static final String PIN = "2468";
@@ -124,7 +124,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row3_aPinSetOnAnotherTvIsAskedThere_learnedHere_andThenWorksWithThatTvOff() {
+    public void row2_aPinSetOnAnotherTvIsAskedThere_learnedHere_andThenWorksWithThatTvOff() {
         String version = ParentPinHash.tagOf(ParentPinHash.make(PIN));
         own(tv, null, version);
         // It has a Parent PIN (things stay locked), though it can't check one alone yet
@@ -159,7 +159,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row3_aTvThatLocksThisOneOutHoldsThePadHere() {
+    public void row2_aTvThatLocksThisOneOutHoldsThePadHere() {
         own(tv, null, ParentPinHash.tagOf(ParentPinHash.make(PIN)));
         ask.peers = new HaParentPins.PeerAnswer(HaParentPins.PeerAnswer.Kind.WAIT, 120);
         long before = System.currentTimeMillis();
@@ -169,7 +169,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row4_whenTheHouseholdsPinChangesWhatWasLearnedForTheOldOneIsNoGood() {
+    public void row3_whenTheHouseholdsPinChangesWhatWasLearnedForTheOldOneIsNoGood() {
         String v1 = ParentPinHash.tagOf(ParentPinHash.make(PIN));
         String v2 = ParentPinHash.tagOf(ParentPinHash.make(OTHER));
         own(tv, null, v1);
@@ -192,7 +192,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row5_aTvThatKeptItsOwnPinWhenItJoinedChecksTheHouseholdsWithTheOtherTvs() {
+    public void row4_aTvThatKeptItsOwnPinWhenItJoinedChecksTheHouseholdsWithTheOtherTvs() {
         own(tv, ParentPinHash.make(OTHER), null);
         String version = ParentPinHash.tagOf(ParentPinHash.make(PIN));
         Map<String, Object> household = new HashMap<>();
@@ -215,7 +215,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row5_aHashAnOlderBuildLeftInTheHouseholdIsCheckedHere() {
+    public void row4_aHashAnOlderBuildLeftInTheHouseholdIsCheckedHere() {
         Map<String, Object> household = Household.parentPinOf(entry(ParentPinHash.make(PIN)));
         assertEquals(HaParentPins.Check.YES, HaParentPins.checkHousehold(tv, household, PIN, ask));
         assertEquals(HaParentPins.Check.NO, HaParentPins.checkHousehold(tv, household, OTHER, ask));
@@ -271,6 +271,29 @@ public class ParentPinLearnTest {
         assertEquals("tv:" + version, ask.peersAsked.get(0));
     }
 
+    @Test
+    public void row5_removedFromTheHousehold_aPinTypedHereStays_withNoOtherTvToAsk() {
+        // Set here: its hash is the TV's own
+        String hash = ParentPinHash.make(PIN);
+        own(tv, hash, ParentPinHash.tagOf(hash));
+        assertEquals(HaParentPins.Check.YES, check(PIN));
+        assertEquals(HaParentPins.Check.NO, check(OTHER));
+        assertTrue(ask.peersAsked.isEmpty());
+
+        // Set on another TV and learned here: still checked here once no other TV answers
+        FakeContext other = new FakeContext("com.thesiegs.hearth");
+        String version = ParentPinHash.tagOf(ParentPinHash.make(OTHER));
+        own(other, null, version);
+        ask.peers = said(HaParentPins.PeerAnswer.Kind.YES);
+        assertEquals(HaParentPins.Check.YES, HaParentPins.check(other, OTHER, ask));
+        ask.peers = HaParentPins.PeerAnswer.UNKNOWN;
+        int asked = ask.peersAsked.size();
+        assertEquals(HaParentPins.Check.YES, HaParentPins.check(other, OTHER, ask));
+        assertEquals(HaParentPins.Check.NO, HaParentPins.check(other, PIN, ask));
+        assertEquals(asked, ask.peersAsked.size());
+        assertTrue(HaParentPins.ownKnown(other));
+    }
+
     // ---- With Home Assistant ----
 
     private void paired(String version) throws Exception {
@@ -281,7 +304,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row7_homeAssistantDecidesAndAYesIsLearned() throws Exception {
+    public void row6_homeAssistantDecidesAndAYesIsLearned() throws Exception {
         paired(V1);
         // Nothing learned yet, and still a TV with a Parent PIN: nothing opens for a kid meanwhile
         assertTrue(HaParentPins.hashes(tv).isEmpty());
@@ -301,7 +324,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row8_pairingATvThatHasItsOwnPin_homeAssistantsTakeItsPlaceAtOnce() throws Exception {
+    public void row6_pairingATvThatHasItsOwnPin_homeAssistantsTakeItsPlaceAtOnce() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         assertEquals(HaParentPins.Check.YES, check(OTHER));
         paired(V1);
@@ -315,7 +338,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row8_pairedBeforeAnyPinWasTypedHere_andHomeAssistantDown_noPinIsTaken() throws Exception {
+    public void row6_pairedBeforeAnyPinWasTypedHere_andHomeAssistantDown_noPinIsTaken() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         paired(V1);
         ask.haReachable = false;
@@ -327,7 +350,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row9_withHomeAssistantDownOnlyAPinUsedHereBeforeWorks() throws Exception {
+    public void row6_withHomeAssistantDownOnlyAPinUsedHereBeforeWorks() throws Exception {
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
         ask.haReachable = false;
@@ -339,7 +362,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row10_anAdultWhoNeverTypedTheirPinHere_anotherTvThatLearnedItVouches() throws Exception {
+    public void row6_anAdultWhoNeverTypedTheirPinHere_anotherTvThatLearnedItVouches() throws Exception {
         paired(V1);
         ask.haReachable = false;
         ask.peers = said(HaParentPins.PeerAnswer.Kind.YES);
@@ -355,7 +378,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row10_onlineTheirPinIsCheckedByHomeAssistantAndLearnedAtOnce() throws Exception {
+    public void row6_onlineTheirPinIsCheckedByHomeAssistantAndLearnedAtOnce() throws Exception {
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
         ask.haPin = OTHER;
@@ -365,7 +388,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row11_aNoFromHomeAssistantDropsTheLearnedPinThatMatches() throws Exception {
+    public void row6_aNoFromHomeAssistantDropsTheLearnedPinThatMatches() throws Exception {
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
         ask.haPin = OTHER;
@@ -380,7 +403,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row11_lockedOutThereIsANoThatKeepsWhatWasLearned() throws Exception {
+    public void row6_lockedOutThereIsANoThatKeepsWhatWasLearned() throws Exception {
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
         ask.haLocked = true;
@@ -389,7 +412,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row11_aNewVersionDropsEveryLearnedPin() throws Exception {
+    public void row6_aNewVersionDropsEveryLearnedPin() throws Exception {
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
         // The same version again (every document says it) keeps them
@@ -433,7 +456,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row12_homeAssistantHasNoParentPins_theTvsOwnApplies() throws Exception {
+    public void row7_homeAssistantHasNoParentPins_theTvsOwnApplies() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         ask.paired = true;
         ask.haReachable = true;
@@ -443,7 +466,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row12_homeAssistantRemovesItsPins_theOnesLearnedHereStay() throws Exception {
+    public void row7_homeAssistantRemovesItsPins_theOnesLearnedHereStay() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
@@ -457,7 +480,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row13_unpaired_learnedPinsStay_andASetPinOfTheTvsOwnReplacesThem() throws Exception {
+    public void row7_unpaired_learnedPinsStay_andASetPinOfTheTvsOwnReplacesThem() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         paired(V1);
         assertEquals(HaParentPins.Check.YES, check(PIN));
@@ -472,7 +495,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row13_unpairedBeforeAnyPinWasTypedHere_theTvsOwnAppliesAgain() throws Exception {
+    public void row7_unpairedBeforeAnyPinWasTypedHere_theTvsOwnAppliesAgain() throws Exception {
         own(tv, ParentPinHash.make(OTHER), null);
         paired(V1);
         ask.paired = false;
@@ -482,7 +505,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row13_unpairedInAHousehold_withNothingLearned_theHouseholdsPinIsAskedOfTheOtherTvs() throws Exception {
+    public void row7_unpairedInAHousehold_withNothingLearned_theHouseholdsPinIsAskedOfTheOtherTvs() throws Exception {
         String version = ParentPinHash.tagOf(ParentPinHash.make(PIN));
         own(tv, null, version);
         paired(V1);
@@ -493,7 +516,7 @@ public class ParentPinLearnTest {
     }
 
     @Test
-    public void row14_hashesAnOlderIntegrationSendsAreNotRead_andOnesKeptBeforeTheUpdateStillWork() throws Exception {
+    public void migration_hashesAnOlderIntegrationSendsAreNotRead_andOnesKeptBeforeTheUpdateStillWork() throws Exception {
         // Kept by a build that took hashes, for version V1
         String hash = ParentPinHash.make(PIN);
         tv.getSharedPreferences(LauncherAccessibilityService.DEVICE_PREFS, 0).edit()

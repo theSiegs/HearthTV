@@ -13,7 +13,7 @@ public class HaClientTest {
         JSONObject client = HaIntegration.clientJson("com.thesiegs.hearth", "2026.11.20");
         assertEquals("com.thesiegs.hearth", client.getString("id"));
         assertEquals("2026.11.20", client.getString("version"));
-        assertEquals(3, client.getInt("contract"));
+        assertEquals(4, client.getInt("contract"));
         assertFalse(client.has("companions"));
     }
 

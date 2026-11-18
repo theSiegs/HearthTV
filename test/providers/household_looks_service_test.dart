@@ -6,6 +6,7 @@ import 'package:flauncher/database.dart';
 import 'package:flauncher/flauncher_channel.dart';
 import 'package:flauncher/providers/backup_service.dart';
 import 'package:flauncher/providers/household_looks_service.dart';
+import 'package:flauncher/providers/parent_pin_hash.dart';
 import 'package:flauncher/providers/settings_service.dart';
 import 'package:flauncher/share/household_looks.dart';
 import 'package:flauncher/share/share_bundle.dart';
@@ -24,7 +25,8 @@ class _FakeChannel extends FLauncherChannel {
   Map<dynamic, dynamic>? javaPreview;
   bool finished = false;
   bool restored = false;
-  String? parentPinHash;
+  // The household's Parent PIN, by its version (what the TVs tell each other)
+  String? parentPinVersion;
 
   @override
   Future<Map<dynamic, dynamic>?> getHouseholdLooks(int since) async {
@@ -63,7 +65,7 @@ class _FakeChannel extends FLauncherChannel {
 
   @override
   Future<Map<dynamic, dynamic>?> getHouseholdParentPin() async =>
-      parentPinHash == null ? {"state": "none"} : {"state": "live", "hash": parentPinHash};
+      parentPinVersion == null ? {"state": "none"} : {"state": "live", "version": parentPinVersion};
 }
 
 /// This TV's profiles: the live one's backup and the others' saved layouts, and what was put in place.
@@ -283,8 +285,11 @@ void main() {
       expect(preview.parentPin, isFalse);
       expect(preview.isEmpty, isFalse);
       // The household has a Parent PIN and this TV none: it changes
-      channel.parentPinHash = "a" * 64;
+      channel.parentPinVersion = ParentPinHash.tagOf(ParentPinHash.hash("2468", cost: 2));
       expect((await service.joinPreview())!.parentPin, isTrue);
+      // This TV already follows a Parent PIN (typed here or not): joining asks for the household's, it isn't changed
+      await settings.setParentPinPending(ParentPinHash.tagOf(ParentPinHash.hash("1357", cost: 2))!);
+      expect((await service.joinPreview())!.parentPin, isFalse);
     });
 
     test("joining keeps a copy; putting it back restores the look, which then goes out as the newest", () async {
