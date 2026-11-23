@@ -11,7 +11,8 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 /**
- * The state document as Home Assistant sends it (ha_tests/contract_fixtures/tv_state_document.json, which
+ * The state document as Home Assistant sends it (src/test/resources/contract_fixtures/tv_state_document.json, a copy
+ * of Hearth's ha_tests/contract_fixtures/tv_state_document.json, which
  * ha_tests/test_client_contract.py checks against the integration), and what the TV makes of it: HearthTube's minutes,
  * the lock and its words, minutes used, and the next lock it starts itself while Home Assistant is away.
  */
@@ -21,7 +22,7 @@ public class TvStateDocumentFixtureTest {
 
     private static JSONObject moments() {
         try {
-            return new JSONObject(PinFakes.file("../../ha_tests/contract_fixtures/tv_state_document.json"))
+            return new JSONObject(PinFakes.file("src/test/resources/contract_fixtures/tv_state_document.json"))
                     .getJSONObject("moments");
         } catch (Exception e) {
             throw new AssertionError(e);

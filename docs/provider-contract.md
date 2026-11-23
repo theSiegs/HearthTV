@@ -151,7 +151,7 @@ if (context.getPackageManager().resolveActivity(intent, 0) != null) context.star
 ## Proposed: playing a video from Home Assistant
 
 Not built; no column or call changes, so the version stays 10. Home Assistant's `hearth.play_on_tv` hands a paired TV a
-one-shot command in its state document ([home-assistant-integration.md](home-assistant-integration.md#play-on-a-tv)).
+one-shot command in its state document ([home-assistant-integration.md](https://github.com/theSiegs/Hearth/blob/master/docs/home-assistant-integration.md#play-on-a-tv)).
 For a YouTube video (`video_id`) Hearth TV starts HearthTube itself, the way it opens a search result in its app: an
 `ACTION_VIEW` of `https://www.youtube.com/watch?v=<video_id>` aimed at `com.thesiegs.hearthtube`, in the profile the
 command names, after Hearth TV has switched to it and `profile_ready` is 1. Nothing new is asked of HearthTube: it plays a

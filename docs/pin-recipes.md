@@ -28,7 +28,7 @@ next release with the same version, so the two don't drift. `PinRecipeFileTest` 
 parses and is never older than Hearth TV's own.
 
 To try a file on a TV before it's on `master`, push it to a branch of this repository and point the TV at it:
-`adb shell settings put global hearth_pin_recipes_url https://raw.githubusercontent.com/theSiegs/Hearth/<branch>/pin-entry/recipes.json`
+`adb shell settings put global hearth_pin_recipes_url https://raw.githubusercontent.com/theSiegs/HearthTV/<branch>/pin-entry/recipes.json`
 (only files in this repository are taken; `adb shell settings delete global hearth_pin_recipes_url` goes back to
 `master`). It's read the next time a PIN entry starts; the next one after that uses it.
 

@@ -5,7 +5,7 @@
 
 ## Getting started
 
-1. Install the APK from the [latest release](https://github.com/theSiegs/Hearth/releases/latest) (see the
+1. Install the APK from the [latest release](https://github.com/theSiegs/HearthTV/releases/latest) (see the
    [README](../README.md#install)).
 2. Open Hearth TV. Its first-run setup starts by itself: it makes the Home button open Hearth TV, makes Hearth TV the home
    app, and ends with what's on. When your other Hearth TVs are in a household, it next offers to join it (someone

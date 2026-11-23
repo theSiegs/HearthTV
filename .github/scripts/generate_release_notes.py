@@ -116,7 +116,7 @@ def main():
 | **`Hearth-arm64-v8a-release.apk`** | Most current Google TV devices (Chromecast with Google TV, onn 4K, Nvidia Shield) | 64-bit ARM (`arm64-v8a`) | {size_arm64} |
 | **`Hearth-armeabi-v7a-release.apk`** | Older 32-bit devices | 32-bit ARM (`armeabi-v7a`) | {size_armv7} |
 
-Already using Hearth? It updates itself: Settings → System → Updates. New here? See [Install](https://github.com/theSiegs/Hearth#install) and the [user guide](https://github.com/theSiegs/Hearth/blob/master/docs/user-guide.md).
+Already using Hearth? It updates itself: Settings → System → Updates. New here? See [Install](https://github.com/theSiegs/HearthTV#install) and the [user guide](https://github.com/theSiegs/HearthTV/blob/master/docs/user-guide.md).
 """
 
     with open("release_notes.md", "w") as f:

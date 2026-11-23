@@ -109,9 +109,10 @@ again where it went missing and grants Hearth TV its Watch Next and calendar acc
 
 ## Releasing
 
-1. Bump `version:` in `pubspec.yaml`: a date-style name and a higher build number (`2026.10.20+8120`).
-   Then run `python3 .github/scripts/integration_version.py --write`, which gives the Home Assistant integration
-   (`custom_components/hearth/manifest.json`) the same version (`2026.10.20`); CI and the release refuse a mismatch.
+1. Bump `version:` in `pubspec.yaml`: a date-style name and a higher build number (`2026.10.20+8120`). The build
+   number only ever rises (the updater offers a release only when it is higher than the installed one). Hearth TV's
+   version is its own: the Home Assistant integration lives in [Hearth](https://github.com/theSiegs/Hearth) and keeps
+   its own version in `custom_components/hearth/manifest.json`.
 2. Add release notes in `fastlane/metadata/android/en-US/changelogs/<build number>.txt`, and update
    [CHANGELOG.md](../CHANGELOG.md).
 3. Commit, tag `v<name>` (annotated), and push the branch and tag.

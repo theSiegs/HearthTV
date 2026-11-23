@@ -164,7 +164,7 @@ follow the adult to the household's other TVs; the newest change wins (see
 
 **Through the Hearth integration.** A TV paired with the integration needs no token for this: the integration sends
 the request to the phones, hears the answer and tells the TV (see
-[home-assistant-integration.md](home-assistant-integration.md#the-devices-side-of-the-api), Phone approval of a
+[home-assistant-integration.md](https://github.com/theSiegs/Hearth/blob/master/docs/home-assistant-integration.md#the-devices-side-of-the-api), Phone approval of a
 switch). Paired, the TV always asks through the integration; with an integration from before this, or one out of
 reach, it falls back to its own token when it has one. Choosing a phone from Home Assistant's full list and **Send a
 test notification** still need the token; without it the page offers the person's phones from Home Assistant. Anyone
@@ -201,8 +201,8 @@ Changing the Parent PIN itself, and the pads for new PINs, never use the phone. 
 
 ## Hearth integration
 
-Hearth TV pairs with Hearth's own integration for Home Assistant (`custom_components/hearth` in this repository; see
-[home-assistant-integration.md](home-assistant-integration.md)). With it, the TV needs no token:
+Hearth TV pairs with Hearth's own integration for Home Assistant (`custom_components/hearth` in the [Hearth](https://github.com/theSiegs/Hearth) repository; see
+[home-assistant-integration.md](https://github.com/theSiegs/Hearth/blob/master/docs/home-assistant-integration.md)). With it, the TV needs no token:
 
 1. Install it (HACS custom repository, or copy the folder) and add it: Settings > Devices & services > Add
    integration > Hearth.

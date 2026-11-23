@@ -16,10 +16,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      # HACS installs the integration from the release tag, so its manifest must carry the release version.
-      - name: Check integration version
-        run: python3 .github/scripts/integration_version.py
-
       - name: Set up Java
         uses: actions/setup-java@v6
         with:
@@ -53,10 +49,6 @@ jobs:
       # The phone pages' encryption, against Node's own ChaCha20-Poly1305
       - name: Test phone page encryption
         run: node test/js/phone_seal_test.js
-
-      # Hearth's page in Home Assistant, drawn without a browser
-      - name: Test Hearth's Home Assistant page
-        run: node --test test/js/hearth_panel_test.mjs
 
       # The NDK Flutter asks for isn't on the runner: the build used to fetch it itself, which once hung for ten
       # minutes and failed on a broken zip. Fetched here instead, each try time-limited, three tries.

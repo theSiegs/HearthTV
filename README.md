@@ -9,9 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/theSiegs/Hearth/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/theSiegs/Hearth?style=flat-square&label=release"></a>
+  <a href="https://github.com/theSiegs/HearthTV/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/theSiegs/HearthTV?style=flat-square&label=release"></a>
   <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square"></a>
 </p>
+
+**Hearth TV:** the TV home screen and Hearth's agent on the TV; not the family rules, which live in Hearth's Home
+Assistant integration ([theSiegs/Hearth](https://github.com/theSiegs/Hearth)).
 
 > [!WARNING]
 > **Early development.** Hearth TV is built and tested on one Google TV device. Expect rough edges and breaking
@@ -130,7 +133,7 @@ Hearth TV's first-run setup walks through each step and opens the right Android 
 
 ## Install
 
-Download an APK from the [latest release](https://github.com/theSiegs/Hearth/releases/latest):
+Download an APK from the [latest release](https://github.com/theSiegs/HearthTV/releases/latest):
 
 | File | For |
 |---|---|
@@ -184,6 +187,25 @@ Details, and every Android permission Hearth TV asks for and why: [docs/privacy.
 - [Privacy](docs/privacy.md): what Hearth TV sends where, and its permissions
 - For contributors: [development](docs/development.md) and the [provider contract](docs/provider-contract.md)
   HearthTube reads
+- The [TV remote API](docs/tv-remote-api.md) Hearth TV serves to phones, and [household sync](docs/household-sync.md)
+  between TVs
+
+## Hearth TV and Hearth
+
+Hearth TV and Hearth's Home Assistant integration live in two repositories and release on their own:
+
+- **This repository** (theSiegs/HearthTV): the TV app (`com.thesiegs.hearth`), its APK releases, which installed
+  TVs update from, the PIN-entry data in `pin-entry/`, and the APIs the TV itself serves (TV remote API, provider
+  contract, household sync).
+- **[Hearth](https://github.com/theSiegs/Hearth)**: the Home Assistant integration (`custom_components/hearth`,
+  installed with HACS) and the APIs it serves to TVs and phones.
+
+The contract between the two (pairing, the state document, what the TV posts, and what the TV does without Home
+Assistant) is Hearth's [docs/contracts/hearth-tv.md](https://github.com/theSiegs/Hearth/blob/master/docs/contracts/hearth-tv.md).
+**A change to that contract needs the page and the contract tests updated together:** Hearth's
+`ha_tests/test_client_contract.py` and `test_hearth_tv_contract.py`, and this repository's `TvStateDocumentFixtureTest` and `TvStateDocumentContractTest`, with the state document
+fixture (`android/app/src/test/resources/contract_fixtures/tv_state_document.json`) kept identical to Hearth's
+`ha_tests/contract_fixtures/tv_state_document.json`.
 
 ## Credits
 
