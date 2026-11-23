@@ -3,6 +3,18 @@
 > **Draft.** Hearth is in early development and this document is a draft: features, settings and
 > setup steps may change or be incomplete.
 
+## 2026.11.56
+
+### TV
+
+- **The first release from Hearth TV's own repository.** Nothing changes on the TV; this build checks that releases from here are signed like the ones before. Hearth's Home Assistant integration keeps its own changelog in [theSiegs/Hearth](https://github.com/theSiegs/Hearth).
+
+## 2026.11.55
+
+### TV
+
+- **Hearth TV moves to its own repository.** This build (released from theSiegs/Hearth) looks for its updates here.
+
 ## 2026.11.53
 
 ### Home Assistant integration
