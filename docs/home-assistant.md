@@ -218,6 +218,27 @@ and the fewest left in a group holding HearthTube becomes the profile's YouTube 
 removes it there (the TV unpairs itself once Home Assistant has refused its posts for about 10 minutes; a
 restarting Home Assistant refuses them briefly).
 
+## Share Bluetooth with Home Assistant
+
+Hearth TV can be a Bluetooth proxy for Home Assistant: its ESPHome integration adopts the TV like an ESP32 running
+`bluetooth_proxy`, and room presence (Bermuda, Private BLE Device and the like) hears nearby phones and watches through
+it. Off by default, per TV.
+
+- **On the TV:** Settings > Home Assistant > **Share Bluetooth with Home Assistant**. Turning it on asks for location,
+  Bluetooth scanning and notifications with Android's own prompts (Android finds no Bluetooth devices without location).
+  Without them it says "Needs permission"; **Allow Bluetooth sharing** asks again. Not in a kids profile.
+- **From Home Assistant:** the TV's switch **Share Bluetooth with Home Assistant** in the Hearth integration turns it on
+  or off without the remote, and its **Bluetooth sharing** sensor says what it comes to (running, needs permission on
+  the TV, Bluetooth or location off). The later change wins, on the TV or in Home Assistant.
+
+The proxy runs in a foreground service in a process of its own, so a problem there never stops the launcher or its
+limits. It starts with Hearth TV and at boot, scans only while Home Assistant listens, and with the screen off looks
+for the makers and services presence tracking uses (Android pauses unfiltered scans then). The TV makes its encryption
+key once, keeps it in its private storage and sends it only to the paired Hearth integration, which adds the TV to
+ESPHome itself. Not paired, the TV still shows up under ESPHome's Discovered, but needs the key, which the TV doesn't
+show. The proxy code is vendored from Glint (`android/esphome-proxy`, see its README). Contract: Hearth's
+[contracts/hearth-tv.md, Bluetooth sharing](https://github.com/theSiegs/Hearth/blob/master/docs/contracts/hearth-tv.md#bluetooth-sharing).
+
 ## TV status
 
 Paired with the Hearth integration, Hearth TV posts what the TV is doing there, when it changes (within a second or

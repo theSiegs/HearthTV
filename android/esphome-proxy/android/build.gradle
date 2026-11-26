@@ -1,0 +1,29 @@
+// :esphome-proxy-android, vendored from Glint (see ../README.md): the Android side of the ESPHome Bluetooth proxy:
+// the BLE scanner, mDNS advertising, a stable MAC and a ready-made foreground service.
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace "com.thesiegs.esphome.proxy.android"
+    compileSdk 36
+    defaultConfig {
+        minSdkVersion 28
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    api project(":esphome-proxy-core")
+}

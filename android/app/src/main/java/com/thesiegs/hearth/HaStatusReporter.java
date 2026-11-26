@@ -56,7 +56,7 @@ final class HaStatusReporter {
      * The features this TV declares in its status (the integration's const.CAPS). Not "commands.play": this TV doesn't
      * run the document's commands yet, so hearth.play_on_tv is refused for it instead of expiring unanswered.
      */
-    static final List<String> CAPS = java.util.Arrays.asList("events", "notices");
+    static final List<String> CAPS = java.util.Arrays.asList("events", "notices", "bluetooth_proxy");
 
     private final Context mContext;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -477,6 +477,9 @@ final class HaStatusReporter {
         status.put("caps", new JSONArray(CAPS));
         // Contract 3: which app this is (checked against the one locked at pairing)
         status.put("client", HaIntegration.clientJson(mContext));
+        // "Share Bluetooth with Home Assistant": this TV's value and what it comes to; while on, how ESPHome reaches
+        // the proxy, with its key (BtProxy; the cap bluetooth_proxy)
+        status.put("bluetooth_proxy", BtProxy.statusJson(mContext));
         return status;
     }
 
@@ -636,6 +639,8 @@ final class HaStatusReporter {
             HaParentPins.applyDocument(mContext, state);
             // The phones of the person each adult profile is, for phone approval when none was chosen
             PhoneApproval.applyHaDocument(mContext, state);
+            // Whether this TV shares its Bluetooth, as an adult set it in Home Assistant
+            BtProxy.applyDocument(mContext, state);
             // The integration's notices for the adults, in the Bell (none in the document: none left)
             if (state != null) Household.onIntegrationNotices(mContext, HaNotices.fromDocument(state));
             mHandler.post(() -> {

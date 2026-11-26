@@ -6147,6 +6147,48 @@ abstract class AppLocalizations {
   /// **'The video\'s title and channel, to Home Assistant'**
   String get haShareNowPlayingDetail;
 
+  /// Home Assistant: this TV as a Bluetooth proxy for Home Assistant (off by default)
+  ///
+  /// In en, this message translates to:
+  /// **'Share Bluetooth with Home Assistant'**
+  String get haShareBluetooth;
+
+  /// Home Assistant: why the TV shares its Bluetooth (said once when turning it on asks for permissions)
+  ///
+  /// In en, this message translates to:
+  /// **'Home Assistant hears nearby phones and watches through this TV, to know who\'s in the room'**
+  String get haShareBluetoothDetail;
+
+  /// Home Assistant: Bluetooth sharing is on but Android's permissions aren't given
+  ///
+  /// In en, this message translates to:
+  /// **'Needs permission on this TV: location and Bluetooth scanning'**
+  String get haShareBluetoothNeedsPermission;
+
+  /// Home Assistant: asks for Android's permissions Bluetooth sharing needs
+  ///
+  /// In en, this message translates to:
+  /// **'Allow Bluetooth sharing'**
+  String get haShareBluetoothAllow;
+
+  /// Home Assistant: Bluetooth sharing is on but the TV's Bluetooth is off
+  ///
+  /// In en, this message translates to:
+  /// **'Bluetooth is off on this TV'**
+  String get haShareBluetoothBluetoothOff;
+
+  /// Home Assistant: Bluetooth sharing is on but the TV's location setting is off
+  ///
+  /// In en, this message translates to:
+  /// **'Location is off on this TV: Android finds no Bluetooth devices without it'**
+  String get haShareBluetoothLocationOff;
+
+  /// Home Assistant: Bluetooth sharing is on but Android hasn't let it start
+  ///
+  /// In en, this message translates to:
+  /// **'Not running yet: it starts when Hearth TV is next on screen'**
+  String get haShareBluetoothStopped;
+
   /// Home Assistant: the Hearth integration's pairing page and tile
   ///
   /// In en, this message translates to:

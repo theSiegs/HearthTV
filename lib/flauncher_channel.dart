@@ -867,6 +867,15 @@ class FLauncherChannel {
   Future<void> setHaShareNowPlaying(bool share) async =>
       await _methodChannel.invokeMethod("setHaShareNowPlaying", share);
 
+  /// "Share Bluetooth with Home Assistant" on this TV: `{on, state, missing}`. `state` is off, running,
+  /// needs_permission, bluetooth_off, location_off or stopped.
+  Future<Map<dynamic, dynamic>> getBtProxy() async =>
+      await _methodChannel.invokeMapMethod<dynamic, dynamic>("getBtProxy") ?? const {};
+
+  /// Turns it on or off here; turning it on asks for Android's permissions first. Answers what it comes to.
+  Future<Map<dynamic, dynamic>> setBtProxyOn(bool on) async =>
+      await _methodChannel.invokeMapMethod<dynamic, dynamic>("setBtProxyOn", on) ?? const {};
+
   /// Starts the phone page for the streaming PINs of the profile on now and returns its one-time link (with the key
   /// in its #fragment, for the QR code); null without a network.
   Future<String?> startPinSetup() async => await _methodChannel.invokeMethod<String>("startPinSetup");

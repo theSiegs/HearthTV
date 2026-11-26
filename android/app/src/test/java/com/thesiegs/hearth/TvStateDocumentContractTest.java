@@ -21,7 +21,7 @@ public class TvStateDocumentContractTest {
     static final int CONTRACT = 3;
     static final List<String> ALWAYS = Arrays.asList("profiles", "youtube_blocks", "commands", "people", "version", "contract");
     static final List<String> OPTIONAL = Arrays.asList(
-            "adult_phones", "notices", "parent_pins_version", "parent_pins", "client_settings");
+            "adult_phones", "notices", "parent_pins_version", "parent_pins", "client_settings", "bluetooth_proxy");
 
     static final String FIXTURE = "src/test/resources/contract_fixtures/tv_state_document.json";
 

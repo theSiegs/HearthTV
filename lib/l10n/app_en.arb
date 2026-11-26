@@ -4565,6 +4565,34 @@
     "@haShareNowPlayingDetail": {
         "description": "Home Assistant: whether HearthTube shares what's playing"
     },
+    "haShareBluetooth": "Share Bluetooth with Home Assistant",
+    "@haShareBluetooth": {
+        "description": "Home Assistant: this TV as a Bluetooth proxy for Home Assistant (off by default)"
+    },
+    "haShareBluetoothDetail": "Home Assistant hears nearby phones and watches through this TV, to know who's in the room",
+    "@haShareBluetoothDetail": {
+        "description": "Home Assistant: why the TV shares its Bluetooth (said once when turning it on asks for permissions)"
+    },
+    "haShareBluetoothNeedsPermission": "Needs permission on this TV: location and Bluetooth scanning",
+    "@haShareBluetoothNeedsPermission": {
+        "description": "Home Assistant: Bluetooth sharing is on but Android's permissions aren't given"
+    },
+    "haShareBluetoothAllow": "Allow Bluetooth sharing",
+    "@haShareBluetoothAllow": {
+        "description": "Home Assistant: asks for Android's permissions Bluetooth sharing needs"
+    },
+    "haShareBluetoothBluetoothOff": "Bluetooth is off on this TV",
+    "@haShareBluetoothBluetoothOff": {
+        "description": "Home Assistant: Bluetooth sharing is on but the TV's Bluetooth is off"
+    },
+    "haShareBluetoothLocationOff": "Location is off on this TV: Android finds no Bluetooth devices without it",
+    "@haShareBluetoothLocationOff": {
+        "description": "Home Assistant: Bluetooth sharing is on but the TV's location setting is off"
+    },
+    "haShareBluetoothStopped": "Not running yet: it starts when Hearth TV is next on screen",
+    "@haShareBluetoothStopped": {
+        "description": "Home Assistant: Bluetooth sharing is on but Android hasn't let it start"
+    },
     "haPairTitle": "Pair with Home Assistant",
     "@haPairTitle": {
         "description": "Home Assistant: the Hearth integration's pairing page and tile"

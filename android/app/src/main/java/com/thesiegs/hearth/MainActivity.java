@@ -98,6 +98,24 @@ public class MainActivity extends FlutterActivity {
     private static final int VOICE_REQUEST = 4242;
     private static final int WATCH_NEXT_PERMISSION_REQUEST = 1002;
     private static final int CALENDAR_PERMISSION_REQUEST = 1003;
+    private static final int BT_PROXY_PERMISSION_REQUEST = 1004;
+    private MethodChannel.Result mPendingBtProxyResult;
+
+    /**
+     * "Share Bluetooth with Home Assistant" turned on or off here. Turning it on asks for what scanning needs (location,
+     * Bluetooth scanning, the notification) with Android's own prompts, and answers once they're answered.
+     */
+    private void setBtProxyOn(boolean on, MethodChannel.Result result) {
+        BtProxy.setOnTv(this, on);
+        if (!on || BtProxy.missingPermissions(this).isEmpty()) {
+            result.success(BtProxy.describe(this));
+        } else if (mPendingBtProxyResult != null) {
+            result.error("ALREADY_REQUESTING", "A permission request is already in progress", null);
+        } else {
+            mPendingBtProxyResult = result;
+            requestPermissions(BtProxy.requiredPermissions(), BT_PROXY_PERMISSION_REQUEST);
+        }
+    }
     // Drawn app images are capped at this many pixels a side.
     private static final int MAX_ICON_PX = 512;
     private static final ExecutorService sIoExecutor = Executors.newFixedThreadPool(4);
@@ -742,6 +760,8 @@ public class MainActivity extends FlutterActivity {
             }
             case "getActiveProfileName" -> result.success(LauncherAccessibilityService.getActiveProfileName(this));
             case "getTvName" -> result.success(ShareDiscovery.deviceName(this));
+            case "getBtProxy" -> result.success(BtProxy.describe(this));
+            case "setBtProxyOn" -> setBtProxyOn(Boolean.TRUE.equals(call.arguments()), result);
             case "getActiveProfileKey" -> result.success(LauncherAccessibilityService.getActiveProfileKey(this));
             case "isProfileDataReady" -> answerFrom(sAppsExecutor, result, this::isProfileDataReady);
             case "setProfileReady" -> {
@@ -1885,6 +1905,7 @@ public class MainActivity extends FlutterActivity {
         super.onCreate(savedInstanceState);
         RemoteApiService.sync(this);
         HaBridgeService.sync(this);
+        BtProxy.sync(this);
         // In another Google TV profile's user Hearth is that profile's agent, not a home screen: the first time
         // it's started there it hides this screen from that profile's home and keeps a quiet connection instead.
         if (AgentService.isAgent(this)) {
@@ -1932,7 +1953,16 @@ public class MainActivity extends FlutterActivity {
         // once (or goes, if the panel was switched off)
         mHandler.removeCallbacks(mPreloadHaPanel);
         mHandler.postDelayed(mPreloadHaPanel, HA_PANEL_PRELOAD_DELAY_MS);
+        // Bluetooth for Home Assistant: started (or started again with the location type Android allows only while
+        // Hearth is in front) when it's on
+        mHandler.removeCallbacks(mSyncBtProxy);
+        mHandler.postDelayed(mSyncBtProxy, BT_PROXY_SYNC_DELAY_MS);
     }
+
+    private static final long BT_PROXY_SYNC_DELAY_MS = 2_000;
+    private final Runnable mSyncBtProxy = () -> {
+        if (sInFront) BtProxy.sync(this);
+    };
 
     private static final long HA_PANEL_PRELOAD_DELAY_MS = 3_000;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -2193,6 +2223,15 @@ public class MainActivity extends FlutterActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == BT_PROXY_PERMISSION_REQUEST) {
+            MethodChannel.Result pending = mPendingBtProxyResult;
+            mPendingBtProxyResult = null;
+            // Granted or not, the setting stays as the adult chose; without them it says it needs permission
+            BtProxy.sync(this);
+            BtProxy.reportSoon();
+            if (pending != null) pending.success(BtProxy.describe(this));
+            return;
+        }
         if (requestCode == WATCH_NEXT_PERMISSION_REQUEST || requestCode == CALENDAR_PERMISSION_REQUEST) {
             if (mPendingPermissionResult != null) {
                 boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;

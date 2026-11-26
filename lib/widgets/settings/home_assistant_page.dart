@@ -50,6 +50,8 @@ class _HomeAssistantPageState extends State<HomeAssistantPage> {
   bool? _paired;
   // HearthTube's now playing for Home Assistant: null when never asked (HearthTube's own default then, on)
   bool? _shareNowPlaying;
+  // "Share Bluetooth with Home Assistant": {on, state, missing} from the TV; null until read
+  Map<dynamic, dynamic>? _bluetooth;
 
   @override
   void initState() {
@@ -65,9 +67,14 @@ class _HomeAssistantPageState extends State<HomeAssistantPage> {
       try {
         share = await _channel.getHaShareNowPlaying();
       } catch (err) { noteFailure('home_assistant_page', err); }
+      Map<dynamic, dynamic>? bluetooth;
+      try {
+        bluetooth = await _channel.getBtProxy();
+      } catch (err) { noteFailure('home_assistant_page', err); }
       if (mounted) {
         setState(() {
           _shareNowPlaying = share;
+          _bluetooth = bluetooth;
           _notifications = enabled;
           _paired = integration["paired"] == true;
         });
@@ -81,6 +88,25 @@ class _HomeAssistantPageState extends State<HomeAssistantPage> {
   }
 
   String _onOff(AppLocalizations l, bool? on) => on == null ? "" : (on ? l.haSummaryOn : l.haSummaryOff);
+
+  /// Turning it on asks for Android's permissions (the prompts come up over this page); asking again when they're
+  /// missing is the same call.
+  Future<void> _setBluetooth(bool on) async {
+    try {
+      final now = await _channel.setBtProxyOn(on);
+      if (mounted) setState(() => _bluetooth = now);
+    } catch (err) {
+      noteFailure('home_assistant_page', err);
+    }
+  }
+
+  String _bluetoothDetail(AppLocalizations l) => switch (_bluetooth?["state"]) {
+        "needs_permission" => l.haShareBluetoothNeedsPermission,
+        "bluetooth_off" => l.haShareBluetoothBluetoothOff,
+        "location_off" => l.haShareBluetoothLocationOff,
+        "stopped" => l.haShareBluetoothStopped,
+        _ => l.haShareBluetoothDetail,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +146,21 @@ class _HomeAssistantPageState extends State<HomeAssistantPage> {
           title: Text(l.haShareNowPlaying, style: textTheme.bodyMedium),
           subtitle: Text(l.haShareNowPlayingDetail, style: textTheme.bodySmall),
           secondary: const Icon(Icons.smart_display_outlined),
+        ),
+        // This TV as a Bluetooth proxy for Home Assistant's room presence: adults only, like the panel. Off by
+        // default; Home Assistant's switch for this TV sets it too
+        if (!kids && _bluetooth != null) RoundedSwitchListTile(
+          value: _bluetooth!["on"] == true,
+          onChanged: _setBluetooth,
+          title: Text(l.haShareBluetooth, style: textTheme.bodyMedium),
+          subtitle: Text(_bluetoothDetail(l), style: textTheme.bodySmall),
+          secondary: const Icon(Icons.bluetooth_searching),
+        ),
+        // On (here or from Home Assistant) without Android's permissions: asks for them again
+        if (!kids && _bluetooth?["state"] == "needs_permission") FocusableSettingsTile(
+          leading: const Icon(Icons.lock_open),
+          title: Text(l.haShareBluetoothAllow, style: textTheme.bodyMedium),
+          onPressed: () => _setBluetooth(true),
         ),
       ],
     );

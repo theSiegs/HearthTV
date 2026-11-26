@@ -22,6 +22,8 @@ public class BootReceiver extends BroadcastReceiver {
         // Home Assistant's link, whether or not Hearth's screen opens at boot
         HaBridgeService.sync(context);
         RemoteApiService.sync(context);
+        // Bluetooth for Home Assistant, when an adult turned it on
+        BtProxy.sync(context);
         // On unless turned off (SettingsService.startOnBoot)
         if (!FlutterPrefs.getBoolean(context, "start_on_boot", true)) return;
         context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));

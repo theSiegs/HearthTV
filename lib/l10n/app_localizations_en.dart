@@ -3677,6 +3677,31 @@ class AppLocalizationsEn extends AppLocalizations {
       'The video\'s title and channel, to Home Assistant';
 
   @override
+  String get haShareBluetooth => 'Share Bluetooth with Home Assistant';
+
+  @override
+  String get haShareBluetoothDetail =>
+      'Home Assistant hears nearby phones and watches through this TV, to know who\'s in the room';
+
+  @override
+  String get haShareBluetoothNeedsPermission =>
+      'Needs permission on this TV: location and Bluetooth scanning';
+
+  @override
+  String get haShareBluetoothAllow => 'Allow Bluetooth sharing';
+
+  @override
+  String get haShareBluetoothBluetoothOff => 'Bluetooth is off on this TV';
+
+  @override
+  String get haShareBluetoothLocationOff =>
+      'Location is off on this TV: Android finds no Bluetooth devices without it';
+
+  @override
+  String get haShareBluetoothStopped =>
+      'Not running yet: it starts when Hearth TV is next on screen';
+
+  @override
   String get haPairTitle => 'Pair with Home Assistant';
 
   @override

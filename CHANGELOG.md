@@ -3,6 +3,12 @@
 > **Draft.** Hearth is in early development and this document is a draft: features, settings and
 > setup steps may change or be incomplete.
 
+## Unreleased
+
+### TV
+
+- **Share Bluetooth with Home Assistant.** Settings > Home Assistant has a new switch, off by default: on, the TV is an ESPHome Bluetooth proxy, so Home Assistant hears nearby phones and watches through it for room presence. Turning it on asks for location, Bluetooth scanning and notifications. The Hearth integration's new switch for the TV turns it on or off without the remote, and the TV tells Home Assistant when it needs permission. The proxy runs in a process of its own, starts with Hearth TV and at boot, and keeps scanning with the screen off for phones, watches and trackers (Google's Find Hub and Fast Pair, Apple, Microsoft and others). The TV makes its encryption key once and sends it to the paired integration, which adds the TV to ESPHome.
+
 ## 2026.11.56
 
 ### TV

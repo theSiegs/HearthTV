@@ -1,0 +1,31 @@
+// :esphome-proxy-core, vendored from Glint (see ../README.md): the ESPHome native API subset a Bluetooth proxy needs
+// (frames, Noise, protobuf messages, the connection state machine) and a plain java.net server. No Android, so the
+// whole wire side is tested on the JVM (./gradlew :esphome-proxy-core:test).
+plugins {
+    id "org.jetbrains.kotlin.jvm"
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    implementation "org.bouncycastle:bcprov-jdk18on:1.80.2"
+    testImplementation "junit:junit:4.13.2"
+}
+
+tasks.withType(Test).configureEach {
+    // The opt-in interop test (AioesphomeapiInteropTest) runs a real aioesphomeapi client when ESPHOME_PROXY_PYTHON
+    // names a Python that has it installed; otherwise it is skipped.
+    def python = providers.environmentVariable("ESPHOME_PROXY_PYTHON").orElse("")
+    inputs.property("esphomeProxyPython", python)
+    doFirst { environment("ESPHOME_PROXY_PYTHON", python.get()) }
+}
