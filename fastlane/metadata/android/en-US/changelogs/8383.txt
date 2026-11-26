@@ -1,0 +1,1 @@
+New: Share Bluetooth with Home Assistant (Settings > Home Assistant, off by default). The TV becomes a Bluetooth proxy so Home Assistant can tell which room phones and watches are in.
