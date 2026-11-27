@@ -14,7 +14,7 @@ data class ProxyIdentity(
     val bluetoothMac: Long = mac,
     val model: String = "Android",
     val manufacturer: String = "Android",
-    /** ESPHome version we claim; HA flags proxies older than 2023.8.0 as outdated. */
+    /** ESPHome version we claim. HA asks to update a Bluetooth proxy older than its STABLE_BLE_VERSION (2026.5.1 in HA 2026.11). */
     val esphomeVersion: String = ESPHOME_VERSION,
     val projectName: String = "",
     val projectVersion: String = "",
@@ -60,7 +60,7 @@ data class ProxyIdentity(
             return s.ifEmpty { "android-proxy" }
         }
 
-        const val ESPHOME_VERSION = "2025.10.0"
+        const val ESPHOME_VERSION = "2026.11.0"
         /** Passive scan, raw advertisements, scanner state and mode. No active connections. */
         const val FEATURE_FLAGS = BluetoothProxyFeature.PASSIVE_SCAN or
             BluetoothProxyFeature.RAW_ADVERTISEMENTS or BluetoothProxyFeature.STATE_AND_MODE

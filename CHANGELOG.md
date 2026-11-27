@@ -3,6 +3,12 @@
 > **Draft.** Hearth is in early development and this document is a draft: features, settings and
 > setup steps may change or be incomplete.
 
+## Unreleased
+
+### TV
+
+- **No more "update with ESPHome" repair for the TV's Bluetooth proxy.** The proxy told Home Assistant it ran ESPHome 2025.10.0, and Home Assistant 2026.11 asks to update any Bluetooth proxy older than 2026.5.1. It now says 2026.11.0, and a test keeps it at or above Home Assistant's minimum.
+
 ## 2026.11.57
 
 ### TV

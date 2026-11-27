@@ -19,6 +19,13 @@ class ApiSessionTest {
     private fun connected() = session().also { it.onMessage(HelloRequest("Home Assistant", 1, 12).encode()) }
 
     @Test
+    fun claimsAnEsphomeVersionHaCallsCurrent() {
+        // HA 2026.11 asks to update any Bluetooth proxy older than 2026.5.1 (esphome STABLE_BLE_VERSION).
+        val (year, month, patch) = ProxyIdentity.ESPHOME_VERSION.split(".").map { it.toInt() }
+        assertTrue(year > 2026 || (year == 2026 && (month > 5 || (month == 5 && patch >= 1))))
+    }
+
+    @Test
     fun helloThenDeviceInfo() {
         val s = session()
         val hello = s.onMessage(HelloRequest("Home Assistant 2026.11", 1, 12).encode()).replies.single()
