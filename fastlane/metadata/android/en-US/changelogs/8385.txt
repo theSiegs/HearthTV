@@ -1,0 +1,1 @@
+Fix: Sharing Bluetooth with Home Assistant carries on after an update, instead of waiting until the TV is next turned on.
