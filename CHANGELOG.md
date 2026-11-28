@@ -3,6 +3,12 @@
 > **Draft.** Hearth is in early development and this document is a draft: features, settings and
 > setup steps may change or be incomplete.
 
+## Unreleased
+
+### TV
+
+- **Sharing Bluetooth carries on after an update.** Updating Hearth TV stopped its Bluetooth proxy until someone next turned the TV on. Hearth TV now starts it again, with its link to Home Assistant, right after an update, without opening its screen.
+
 ## 2026.11.58
 
 ### TV
