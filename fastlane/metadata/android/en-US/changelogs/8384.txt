@@ -1,0 +1,1 @@
+Fix: Home Assistant no longer asks to update the TV's Bluetooth proxy to ESPHome 2026.5.1.
